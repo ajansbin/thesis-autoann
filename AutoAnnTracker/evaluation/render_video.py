@@ -1,3 +1,5 @@
+# Make sure ffmpeg is installed in system
+
 import ffmpeg
 import argparse
 import os
@@ -41,6 +43,7 @@ def render_video(args):
         file_path = os.path.join(args.scene_folder, args.class_names, "*.png")
     imgs = ffmpeg.input(file_path,  pattern_type='glob', framerate=args.framerate)
     out = ffmpeg.output(imgs, args.out_name)
+
     out.run()
     print("... Video rendering completed!")
 
