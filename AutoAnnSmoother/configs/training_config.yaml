@@ -1,0 +1,36 @@
+### WaymoPointNet ###
+model:
+  type: pointnet # one of [pointnet]
+  pointnet:
+    input_dim: 11 # center + size + rotation + temporal encoding (#frames from FoI)
+    out_size: 11
+    feat_size: 1024
+    mlp1_sizes: [64,64,128,512]
+    mlp2_sizes: [128,128]
+
+### Dataclass ###
+data:
+  type: nuscenes # one of [nuscenes, zod]
+  version: v1.0-trainval
+  split: val
+  foi_index: 20 # index in sequence where annotation exist TO BE REMOVED
+  window_size: 5
+  sliding_window: true
+  gt_assoc_threshold:  10
+  max_tracks: 50
+
+### Training Specific ###
+train:
+  learning_rate: 1.0E-3
+  weight_decay: 1.0E-5
+  train_size: 0.8
+  batch_size: 8
+  n_workers: 1
+  n_epochs: 1
+  seed: 0
+
+loss:
+  weight:
+    center: 10
+    size : 2
+    rotation: 5
