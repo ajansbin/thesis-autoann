@@ -1,7 +1,6 @@
 from smoother.io.load_config import load_config
 from tools.utils.training_utils import Trainer
-from smoother.data.nuscenes_data import SlidingWindowTracksNusc, WindowTracksNusc, ResultsData
-from smoother.data.zod_data import ZodData
+from smoother.data.common.sequence_data import SlidingWindowTracksData, WindowTracksData
 from smoother.models.pointnet import WaymoPointNet
 import torch
 from torch import optim
@@ -47,21 +46,25 @@ class SmoothingTrainer():
 
     def load_data(self):
         print("---Loading data---")
-        if self.data_type == 'nuscenes':
-            self.tracking_results = ResultsData(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
-            if self.sliding_window:
-                self.data_model = SlidingWindowTracksNusc(self.tracking_results,self.window_size, self.foi_index)
-            else:
-                start_ind = self.foi_index - (self.window_size-1)/2
-                end_ind = self.foi_index + (self.window_size-1)/2
-                window = (start_ind, end_ind)
-                self.data_model = WindowTracksNusc(self.tracking_results,window)
 
+        # Load datatype specific results from tracking
+        if self.data_type == 'nuscenes':
+            from smoother.data.nuscenes_data import NuscTrackingResults
+            self.tracking_results = NuscTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
         elif self.data_type == 'zod':
+            from smoother.data.zod_data import ZodTrackingResults
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes'")
-            #self.data_model = ZodData(self.result_path, self.conf, self.data_version,self.split,self.data_path)
         else:
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
+        
+        # Load data model
+        if self.sliding_window:
+            self.data_model = SlidingWindowTracksData(self.tracking_results,self.window_size, self.foi_index)
+        else:
+            start_ind = self.foi_index - (self.window_size-1)/2
+            end_ind = self.foi_index + (self.window_size-1)/2
+            window = (start_ind, end_ind)
+            self.data_model = WindowTracksData(self.tracking_results,window)
 
 
     def load_model(self):

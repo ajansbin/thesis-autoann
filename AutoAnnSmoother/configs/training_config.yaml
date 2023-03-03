@@ -3,7 +3,7 @@ model:
   type: pointnet # one of [pointnet]
   pointnet:
     input_dim: 11 # center + size + rotation + temporal encoding (#frames from FoI)
-    out_size: 11
+    out_size: 10
     feat_size: 1024
     mlp1_sizes: [64,64,128,512]
     mlp2_sizes: [128,128]
@@ -13,9 +13,11 @@ data:
   type: nuscenes # one of [nuscenes, zod]
   version: v1.0-trainval
   split: val
+  feature_dim: 11 #same as input_dim for the model
   foi_index: 20 # index in sequence where annotation exist TO BE REMOVED
   window_size: 5
   sliding_window: true
+  gt_dim: 10 # same as out_dim for the model
   gt_assoc_threshold:  10
   max_tracks: 50
 
