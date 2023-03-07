@@ -1,7 +1,7 @@
 from smoother.io.load_config import load_config
 from tools.utils.training_utils import Trainer
 from smoother.data.common.sequence_data import SlidingWindowTracksData, WindowTracksData
-from smoother.models.pointnet import WaymoPointNet
+from smoother.models.pointnet import PointNet
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
@@ -23,6 +23,8 @@ class SmoothingTrainer():
         self.foi_index = self.conf["data"]["foi_index"] # index in sequence where annotation exist
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
+        
+        self.normalize = self.conf["data"]["normalize"]["normalize"]
 
         self.model_type = self.conf["model"]["type"]
 
@@ -57,14 +59,31 @@ class SmoothingTrainer():
         else:
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
         
+        #Normalization
+        if self.normalize:
+            center_mean = self.conf["data"]["normalize"]["center"]["mean"]
+            center_stdev = self.conf["data"]["normalize"]["center"]["stdev"]
+            size_mean = self.conf["data"]["normalize"]["size"]["mean"]
+            size_stdev = self.conf["data"]["normalize"]["size"]["stdev"]
+            rotation_mean = self.conf["data"]["normalize"]["rotation"]["mean"]
+            rotation_stdev = self.conf["data"]["normalize"]["rotation"]["stdev"]
+            score_mean = self.conf["data"]["normalize"]["score"]["mean"]
+            score_stdev = self.conf["data"]["normalize"]["score"]["stdev"]
+
+            means = center_mean + size_mean + rotation_mean + score_mean
+            stdev = center_stdev + size_stdev + rotation_stdev + score_stdev
+        else:
+            means, stdev = None, None
+
+
         # Load data model
         if self.sliding_window:
-            self.data_model = SlidingWindowTracksData(self.tracking_results,self.window_size, self.foi_index)
+            self.data_model = SlidingWindowTracksData(self.tracking_results,self.window_size, self.foi_index, means, stdev)
         else:
-            start_ind = self.foi_index - (self.window_size-1)/2
-            end_ind = self.foi_index + (self.window_size-1)/2
+            start_ind = int(self.foi_index - (self.window_size-1)/2)
+            end_ind = int(self.foi_index + (self.window_size-1)/2)
             window = (start_ind, end_ind)
-            self.data_model = WindowTracksData(self.tracking_results,window)
+            self.data_model = WindowTracksData(self.tracking_results,window, means, stdev)
 
 
     def load_model(self):
@@ -74,7 +93,7 @@ class SmoothingTrainer():
             out_size = self.conf["model"][self.model_type]["out_size"]
             mlp1_sizes = self.conf["model"][self.model_type]["mlp1_sizes"]
             mlp2_sizes = self.conf["model"][self.model_type]["mlp2_sizes"]
-            self.model = WaymoPointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, self.window_size)
+            self.model = PointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, self.window_size)
 
 
     def train(self):
@@ -92,8 +111,8 @@ class SmoothingTrainer():
 
         batch_size = self.batch_size
 
-        train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.n_workers)
-        val_dataloader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.n_workers)
+        train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
+        val_dataloader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
 
         self.trained_model, train_losses, val_losses = trainer.training_loop(self.model,optimizer,loss_fn,self.n_epochs, train_dataloader, val_dataloader)
         self.result_dict = {"train_losses": train_losses, "val_losses":val_losses}

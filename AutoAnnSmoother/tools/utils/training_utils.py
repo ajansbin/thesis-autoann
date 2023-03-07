@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 import numpy as np
 
 class Trainer():
@@ -43,7 +44,7 @@ class Trainer():
 
             tracks, gt_anns = x.to(device), y.to(device).long()
             optimizer.zero_grad()
-
+            #print("batch", tracks.shape, gt_anns.shape)
             model_output = model.forward(tracks)
 
             loss = loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
@@ -66,26 +67,39 @@ class Trainer():
                 val_loss_cum += loss.item()
 
         return val_loss_cum/len(val_loader)
+    
+    def compute_score_loss(self, predictions, gts):
+        scores = predictions[:,10]
+        gt_score = gts[:,10]
+        m = nn.Sigmoid()
+        loss = nn.BCELoss()
+        out = loss(m(scores),gt_score)
+        return out
+
+
 
     def compute_loss(self, predictions, gts):
+        #print("Loss", predictions.shape, gts.shape)
         centers = predictions[:,:3]
         gt_centers = gts[:,:3]
         center_loss = torch.linalg.norm(gt_centers-centers)
 
         sizes = predictions[:,3:6]
-        gt_sizes = gts[:,:3:6]
+        gt_sizes = gts[:,3:6]
         size_loss = torch.linalg.norm(gt_sizes-sizes)
 
         rotation = predictions[:,6:10]
-        gt_rotation = gts[:,:6:10]
+        gt_rotation = gts[:,6:10]
         rotation_loss = torch.linalg.norm(gt_rotation-rotation)
 
         return center_loss, size_loss, rotation_loss
 
     def box_regression_loss(self, predictions, gt):
         center_loss, size_loss, rotation_loss = self.compute_loss(predictions, gt)
+        score_loss = self.compute_score_loss(predictions,gt)
         center_loss *= self.loss_params["weight"]["center"]
         size_loss *= self.loss_params["weight"]["size"]
         rotation_loss *= self.loss_params["weight"]["rotation"]
-
-        return center_loss + size_loss + rotation_loss
+        score_loss *= self.loss_params["weight"]["score"]
+        #print(center_loss, size_loss, rotation_loss, score_loss)
+        return center_loss + size_loss + rotation_loss + score_loss

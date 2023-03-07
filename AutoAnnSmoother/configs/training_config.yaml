@@ -3,7 +3,7 @@ model:
   type: pointnet # one of [pointnet]
   pointnet:
     input_dim: 11 # center + size + rotation + temporal encoding (#frames from FoI)
-    out_size: 10
+    out_size: 11
     feat_size: 1024
     mlp1_sizes: [64,64,128,512]
     mlp2_sizes: [128,128]
@@ -17,9 +17,23 @@ data:
   foi_index: 20 # index in sequence where annotation exist TO BE REMOVED
   window_size: 5
   sliding_window: true
-  gt_dim: 10 # same as out_dim for the model
+  gt_dim: 11 # same as out_dim for the model
   gt_assoc_threshold:  10
-  max_tracks: 50
+  max_tracks: 50 # not used
+  normalize:
+    normalize: true
+    center:
+      mean: [574.1930785274128, 670.7998506479671, 0.580930008568242]
+      stdev: [905.083423267894, 1008.5718984788836, 1.0236514882173895]
+    size:
+      mean: [0.6920983855701238, 1.6819778023139855, 0.8968053990132691]
+      stdev: [1.1169891897664832, 3.056637190446677, 1.3291400606726422]
+    rotation:
+      mean: [-0.015093690155607173, 0.00010917267531814528, 0.0005753381085802861, -0.01973784823367098]
+      stdev: [0.49542883964751927, 0.012178789304299975, 0.012164937100250302, 0.5091894144363663]
+    score:
+      mean: [0.0]
+      stdev: [1.4142260170824255]
 
 ### Training Specific ###
 train:
@@ -28,11 +42,12 @@ train:
   train_size: 0.8
   batch_size: 8
   n_workers: 1
-  n_epochs: 1
+  n_epochs: 10
   seed: 0
 
 loss:
   weight:
-    center: 10
-    size : 2
-    rotation: 5
+    center: 2
+    size : 1
+    rotation: 1
+    score: 1

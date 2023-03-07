@@ -17,7 +17,6 @@ class TrackingResults():
         # CONFIG SPECIFIC
         self.feature_dim = self.config["data"]["feature_dim"]
         self.window_size = self.config["data"]["window_size"]
-        self.max_tracks = self.config["data"]["max_tracks"]
         self.gt_dim = self.config["data"]["gt_dim"]
         self.gt_assoc_threshold = self.config["data"]["gt_assoc_threshold"]
 
@@ -64,9 +63,8 @@ class SequenceData():
         self.start_ind, self.end_ind = window
 
         self.feature_dim = self.tracking_results.feature_dim
-        self.window_size = self.end_ind - self.start_ind
+        self.window_size = self.end_ind - self.start_ind + 1
         self.foi_index = foi_index
-        self.max_tracks = self.tracking_results.max_tracks
         self.gt_dim = self.tracking_results.gt_dim
         self.gt_assoc_threshold = self.tracking_results.gt_assoc_threshold
 
@@ -83,51 +81,42 @@ class SequenceData():
         gt_assoc = self._get_corresponding_foi_gt_boxes(foi_token) #get all gt boxes for foi for all boxes
 
         track_id_pc = defaultdict(list)
-        for i, frame_token in enumerate(window_tokens, self.start_ind):
+        for i, frame_token in enumerate(window_tokens):
             frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
             for box in frame_pred_boxes:
+                if not box.tracking_id in track_id_pc:
+                    t_encs = [i+self.start_ind-foi_ind for i in range(self.window_size)]
+                    init_point = [[0]*(self.feature_dim-1) + [t_encs[i]] for i in range(self.window_size)]
+                    track_id_pc[box.tracking_id] = init_point
+
                 center = list(box.translation)
                 size = list(box.size)
                 rotation = list(box.rotation)
-                temp_encoding = [i-foi_ind]
+                temp_encoding = [i+self.start_ind-foi_ind]
                 point = center + size + rotation + temp_encoding
-                track_id_pc[box.tracking_id].append(point)
+                track_id_pc[box.tracking_id][i] = point
 
         x, y = [], []
         for track_id, point_cloud in track_id_pc.items():
-            if track_id in gt_assoc:
-                if gt_assoc[track_id]:
-                    gt_box = self._get_gt_box(gt_assoc, track_id)
-                else:
-                    gt_box = [0]*self.gt_dim
-
-                #if k in gt_assoc:
-                pad = [[0]*self.feature_dim] * (self.window_size-len(point_cloud))
-                padded_pc = point_cloud + pad
-                x.append(padded_pc)
+            if track_id in gt_assoc: # track_id2 
+                gt_box = self._get_gt_box(gt_assoc, track_id)
+                x.append(point_cloud)
                 y.append(gt_box)
-
-        x, y = torch.tensor(x), torch.tensor(y)
-
-        #Pad or truncate
-        if len(x) < self.max_tracks:
-            x = F.pad(x,(0,0,0,0,0,self.max_tracks-len(x)))
-        else:
-            x = x[:self.max_tracks,:,:]
-
-        if len(y) < self.max_tracks:
-            y = F.pad(y,(0,0,0,self.max_tracks-len(y)))
-        else:
-            y = y[:self.max_tracks,:] 
 
         return x,y
 
     def _get_gt_box(self, gt_assoc, track_id):
-        box = gt_assoc[track_id]
-        center = list(box.translation)
-        size = list(box.size)
-        rotation = list(box.rotation)
-        return center + size + rotation
+        if gt_assoc[track_id] is None:
+            point = [0]*self.gt_dim
+        else:
+            box = gt_assoc[track_id]
+            center = list(box.translation)
+            size = list(box.size)
+            rotation = list(box.rotation)
+            exist = [1]
+            point = center + size + rotation + exist
+            
+        return point
 
     def _get_frames_in_sequence(self, scene_token):
         seq = self.tracking_results.get_sequence_from_id(scene_token)
@@ -153,6 +142,7 @@ class SequenceData():
         if len(frame_gt_boxes) == 0:
             for pred_idx, pred_box in enumerate(frame_pred_boxes):
                 gt_track_id_assocs[pred_box.tracking_id] =  None
+            
             return gt_track_id_assocs
 
         dists = l2(frame_gt_boxes, frame_pred_boxes)
@@ -171,14 +161,23 @@ class SequenceData():
     
 class WindowTracksData():
 
-    def __init__(self, tracking_results: TrackingResults, window):
+    def __init__(self, tracking_results: TrackingResults, window, means = None, stds = None):
         self.tracking_results = tracking_results
         self.window = window
+        self.means = torch.tensor(means) if means else None
+        self.stds = torch.tensor(stds) if stds else None
 
         self.data = list(self._get_data_samples())
 
     def __getitem__(self, index):
-        return self.data[index]
+        track, track_gt = self.data[index]
+
+        if self.means is not None and self.stds is not None:
+           track = (track - self.means)/self.stds
+           n_norm_features = len(track[0])
+           track_gt[:n_norm_features] = (track_gt[:n_norm_features] - self.means) / self.stds
+
+        return (track, track_gt)
 
     def __len__(self):
         return len(self.data)
@@ -187,17 +186,17 @@ class WindowTracksData():
         seq_data = SequenceData(self.tracking_results, self.window)
         for x_seq, y_seq in seq_data:
             for track, track_gt in zip(x_seq,y_seq):
-                is_tracks = torch.count_nonzero(track) != torch.tensor(0)
-                is_gt_track = torch.count_nonzero(track_gt) != torch.tensor(0)
-                if is_tracks and is_gt_track:
-                    yield (track, track_gt)
+                track, track_gt = torch.tensor(track, dtype=torch.float32), torch.tensor(track_gt, dtype=torch.float32)
+                yield (track, track_gt)
 
 class SlidingWindowTracksData():
 
-    def __init__(self, tracking_results: TrackingResults, window_size=5, foi_index=20):
+    def __init__(self, tracking_results: TrackingResults, window_size=5, foi_index=20, means=None, stds=None):
         self.tracking_results = tracking_results
         self.window_size = window_size
         self.foi_index = foi_index
+        self.means = means
+        self.stds = stds
         self.data = list(self._get_data_samples())
 
     def __getitem__(self,index):
@@ -211,8 +210,9 @@ class SlidingWindowTracksData():
             if self.foi_index - self.window_size + i < 0:
                 continue
             start_ind = self.foi_index-self.window_size + i + 1
-            end_ind = start_ind + self.window_size
+            end_ind = start_ind + self.window_size - 1
             window = (start_ind, end_ind)
-            wind_track_nusc = WindowTracksData(self.tracking_results,window)
+            print(window)
+            wind_track_nusc = WindowTracksData(self.tracking_results,window,self.means, self.stds)
             for track in wind_track_nusc:
                 yield track
