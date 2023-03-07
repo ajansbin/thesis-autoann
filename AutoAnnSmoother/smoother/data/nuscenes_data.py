@@ -1,4 +1,4 @@
-from smoother.data.loading.loader import load_gt_local
+from smoother.data.loading.nuscenes_loader import load_gt_local
 from smoother.data.common.box3d import l2
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils import splits
@@ -48,11 +48,22 @@ class NuscTrackingResults(TrackingResults):
     def get_sequence_id_from_index(self, index):
         return self.split_scene_token[index]
     
-    def get_sequence_from_id(self, id):
-        return self.nusc.get("scene", id)
+    #def get_sequence_from_id(self, id):
+    #    return self.nusc.get("scene", id)
     
-    def get_frame_from_id(self, id):
-        return self.nusc.get("sample", id)
+    #def get_frame_from_id(self, id):
+    #    return self.nusc.get("sample", id)
+    
+    def get_frames_in_sequence(self, scene_token):
+       seq = self.nusc.get("scene", id)
+       seq_frames = []
+       frame_token = seq["first_sample_token"]
+       n_frames = seq["nbr_samples"]
+       for i in range(n_frames):
+           seq_frames.append(frame_token)
+           frame = self.nusc.get("sample", frame_token)
+           frame_token = frame["next"]
+       return seq_frames
     
     def get_pred_boxes_from_frame(self, frame_token):
         return self.pred_boxes[frame_token]
@@ -60,11 +71,8 @@ class NuscTrackingResults(TrackingResults):
     def get_gt_boxes_from_frame(self, frame_token):
         return self.gt_boxes[frame_token]
     
-    def get_first_frame_in_sequence(self, seq):
-        return seq["first_sample_token"]
-    
-    def get_next_frame(self, prev_frame):
-        return prev_frame["next"]
+    #def get_first_frame_in_sequence(self, seq):
+    #    return seq["first_sample_token"]
     
     def get_number_of_sequences(self):
         return len(self.split_scene_token)

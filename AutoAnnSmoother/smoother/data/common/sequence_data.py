@@ -29,10 +29,10 @@ class TrackingResults():
     def get_sequence_id_from_index(self, index):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
 
-    def get_sequence_from_id(self, id):
-        raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
+    #def get_sequence_from_id(self, id):
+    #    raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
 
-    def get_frame_from_id(self, id):
+    def get_frames_in_sequence(self, scene_token):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
 
     def get_pred_boxes_from_frame(self, frame_token):
@@ -41,11 +41,8 @@ class TrackingResults():
     def get_gt_boxes_from_frame(self, frame_token):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
 
-    def get_first_frame_in_sequence(self, seq):
-        raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
-
-    def get_next_frame(self, prev_frame):
-        raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
+    #def get_first_frame_in_sequence(self, seq):
+    #    raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
 
     def get_number_of_sequences(self):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
@@ -73,7 +70,7 @@ class SequenceData():
 
     def __getitem__(self, index):
         seq_token = self.tracking_results.get_sequence_id_from_index(index)
-        seq_tokens = self._get_frames_in_sequence(seq_token)
+        seq_tokens = self.tracking_results.get_frames_in_sequence(seq_token)
         window_tokens = seq_tokens[self.start_ind:self.end_ind]
         foi_ind = self._get_frame_of_interest()
         foi_token = seq_tokens[foi_ind]
