@@ -2,7 +2,7 @@ from .common.sequence_data import TrackingResults
 import os
 from zod import ZodSequences
 from zod.constants import Lidar
-from loadinng.zod_loader import load_prediction
+from smoother.data.loading.loader import load_prediction
 
 
 class ZodTrackingResults(TrackingResults):
@@ -16,8 +16,10 @@ class ZodTrackingResults(TrackingResults):
         self.frame_idx = 0
         # ToDo:Change to ZOD
         assert version in ['full', 'mini'] 
-        self.train_scenes = zod.get_split('train')
-        self.val_scenes = zod.get_split('val')        
+        self.train_scenes = self.zod.get_split('train')
+        self.val_scenes = self.zod.get_split('val')      
+
+        self.scene_tokens = list(self.zod.get_all_ids())  
         
         #self.split_scene_token = set(get_available_scenes(zod, train_scenes))
         #val_scenes = set(get_available_scenes(zod, val_scenes))
@@ -39,7 +41,7 @@ class ZodTrackingResults(TrackingResults):
         return [] #no annotations yet
     
     def get_sequence_id_from_index(self, index):
-        return self.zod.get_all_ids()[index]
+        return self.scene_tokens[index]
     
     #def get_sequence_from_id(self, id):
     #    return self.zod[id]
@@ -47,10 +49,11 @@ class ZodTrackingResults(TrackingResults):
     def get_frames_in_sequence(self, scene_token):
         seq = self.zod[scene_token]
         lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
-        return lidar_frames
+        frame_tokens = [os.path.basename(l.to_dict()['filepath']) for l in lidar_frames]
+        return frame_tokens
     
     def get_pred_boxes_from_frame(self, frame_token):
-        return self.pred_boxes[frame_token]
+        return self.pred_boxes[frame_token][0]
     
     def get_gt_boxes_from_frame(self, frame_token):
         return [] #no annotations yet

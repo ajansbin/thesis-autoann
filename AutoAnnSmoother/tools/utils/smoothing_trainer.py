@@ -55,7 +55,7 @@ class SmoothingTrainer():
             self.tracking_results = NuscTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
         elif self.data_type == 'zod':
             from smoother.data.zod_data import ZodTrackingResults
-            raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes'")
+            self.tracking_results = ZodTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
         else:
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
         
@@ -108,8 +108,6 @@ class SmoothingTrainer():
         n_val = size - n_train
 
         train_dataset, val_dataset = random_split(self.data_model, [n_train, n_val])
-
-        batch_size = self.batch_size
 
         train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
         val_dataloader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)

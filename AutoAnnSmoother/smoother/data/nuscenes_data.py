@@ -2,7 +2,8 @@ from smoother.data.loading.nuscenes_loader import load_gt_local
 from smoother.data.common.box3d import l2
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils import splits
-from nuscenes.eval.common.loaders import load_prediction
+#from nuscenes.eval.common.loaders import load_prediction
+from smoother.data.loading.loader import load_prediction
 from nuscenes.eval.detection.data_classes import DetectionBox
 from nuscenes.eval.tracking.data_classes import TrackingBox
 import os
@@ -40,7 +41,8 @@ class NuscTrackingResults(TrackingResults):
         self.gt_boxes = self.load_gt_detections()
 
     def load_tracking_predictions(self, tracking_results_path):
-        return load_prediction(tracking_results_path, self.max_boxes, TrackingBox, verbose=True)
+        #return load_prediction(tracking_results_path, self.max_boxes, TrackingBox, verbose=True)
+        return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
         return load_gt_local(self.nusc, self.split, DetectionBox, verbose=True)
