@@ -1,16 +1,8 @@
-from smoother.data.loading.nuscenes_loader import load_gt_local
-from smoother.data.common.box3d import l2
+from smoother.data.loading.loader import load_prediction
+from .loading.nuscenes_loader import load_gt
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils import splits
-#from nuscenes.eval.common.loaders import load_prediction
-from smoother.data.loading.loader import load_prediction
-from nuscenes.eval.detection.data_classes import DetectionBox
-from nuscenes.eval.tracking.data_classes import TrackingBox
 import os
-import torch
-import torch.nn.functional as F
-from collections import defaultdict 
-import numpy as np
 from .common.sequence_data import TrackingResults
 
 class NuscTrackingResults(TrackingResults):
@@ -41,11 +33,10 @@ class NuscTrackingResults(TrackingResults):
         self.gt_boxes = self.load_gt_detections()
 
     def load_tracking_predictions(self, tracking_results_path):
-        #return load_prediction(tracking_results_path, self.max_boxes, TrackingBox, verbose=True)
         return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
-        return load_gt_local(self.nusc, self.split, DetectionBox, verbose=True)
+        return load_gt(self.nusc, self.split, "detection", verbose=True)
     
     def get_sequence_id_from_index(self, index):
         return self.split_scene_token[index]
@@ -57,7 +48,7 @@ class NuscTrackingResults(TrackingResults):
     #    return self.nusc.get("sample", id)
     
     def get_frames_in_sequence(self, scene_token):
-       seq = self.nusc.get("scene", id)
+       seq = self.nusc.get("scene", scene_token)
        seq_frames = []
        frame_token = seq["first_sample_token"]
        n_frames = seq["nbr_samples"]
@@ -68,10 +59,10 @@ class NuscTrackingResults(TrackingResults):
        return seq_frames
     
     def get_pred_boxes_from_frame(self, frame_token):
-        return self.pred_boxes[frame_token]
+        return self.pred_boxes[frame_token][0]
     
     def get_gt_boxes_from_frame(self, frame_token):
-        return self.gt_boxes[frame_token]
+        return self.gt_boxes[frame_token][0]
     
     #def get_first_frame_in_sequence(self, seq):
     #    return seq["first_sample_token"]

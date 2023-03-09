@@ -2,6 +2,7 @@ from smoother.io.load_config import load_config
 from tools.utils.training_utils import Trainer
 from smoother.data.common.sequence_data import SlidingWindowTracksData, WindowTracksData
 from smoother.models.pointnet import PointNet
+from smoother.models.transformer import PointTransformer
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
@@ -93,8 +94,15 @@ class SmoothingTrainer():
             out_size = self.conf["model"][self.model_type]["out_size"]
             mlp1_sizes = self.conf["model"][self.model_type]["mlp1_sizes"]
             mlp2_sizes = self.conf["model"][self.model_type]["mlp2_sizes"]
-            self.model = PointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, self.window_size)
-
+            mlp3_sizes = self.conf["model"][self.model_type]["mlp3_sizes"]
+            self.model = PointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, mlp3_sizes, self.window_size)
+        elif self.model_type == 'transformer':
+            input_dim = self.conf["model"][self.model_type]["input_dim"]
+            out_size = self.conf["model"][self.model_type]["out_size"]
+            mlp_sizes = self.conf["model"][self.model_type]["mlp_sizes"]
+            num_heads = self.conf["model"][self.model_type]["num_heads"]
+            self.model = PointTransformer(input_dim, out_size, mlp1_sizes, num_heads)
+           
 
     def train(self):
         print("---Starting training---")
@@ -125,13 +133,15 @@ class SmoothingTrainer():
         save_dir_full = os.path.join(self.save_dir, self.model_type)
         if not os.path.exists(save_dir_full):
             os.mkdir(save_dir_full)
+
+        model_name = f"{self.model_type}_{self.data_type}_{self.split}"
         
         # save model
-        model_path = os.path.join(save_dir_full, "model.pth")
+        model_path = os.path.join(save_dir_full, model_name + "_model.pth")
         torch.save(self.trained_model.state_dict(), model_path)
 
         # save losses
-        losses_path = os.path.join(save_dir_full, "losses.sjon")
+        losses_path = os.path.join(save_dir_full, model_name + "_losses.sjon")
         json_object = json.dumps(self.result_dict)
         with open(losses_path, "w") as outfile:
             outfile.write(json_object)

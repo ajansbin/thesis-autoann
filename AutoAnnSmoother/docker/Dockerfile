@@ -24,10 +24,6 @@ RUN conda update -n base -c defaults conda
 RUN yes | pip install numpy
 RUN conda install pytorch==1.9.0 torchvision==0.10.0 cudatoolkit=11.1 -c pytorch -c conda-forge -y
 
-RUN git clone https://github.com/coltonstearns/SpOT.git /SpOT
-WORKDIR /SpOT
-
-RUN pip install -r requirements.txt --ignore-installed llvmlite
 # install MMCV as base-package for some CUDA kernels in third_party/
 RUN yes | pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.0/index.html
 RUN yes | pip install mmdet==2.11.0
@@ -37,13 +33,12 @@ RUN conda install -c fvcore -c iopath -c conda-forge fvcore iopath -y
 RUN conda install -c bottler nvidiacub -y
 RUN conda install pytorch3d==0.6.2 -c pytorch3d -y
 
-# compile PointNet++ CUDA kernels
-WORKDIR /SpOT/third_party/pointnet2
+
+
+COPY . /AutoAnnSmoother
+WORKDIR /AutoAnnSmoother
+
+RUN pip install -r requirements.txt --ignore-installed llvmlite
 RUN python setup.py install
-WORKDIR /SpOT
-
-# compile general CUDA kernels
-RUN python setup.py develop
-
 RUN pip install numpy==1.19.2 --no-cache-dir
 

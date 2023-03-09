@@ -12,9 +12,9 @@ class Trainer():
 
     def training_loop(self, model, optimizer, loss_fn, n_epochs, train_loader, val_loader):
         print("Training started!")
-        #device = torch.device("cuda" if torch.cuda.is_available() 
-        #                                else "cpu")
-        device="cpu"
+        device = torch.device("cuda" if torch.cuda.is_available() 
+                                        else "cpu")
+        #device="cpu"
         model.to(device)
         train_losses, val_losses = [], []
 
@@ -41,10 +41,10 @@ class Trainer():
         num_batches = len(train_loader)
         
         for batch_index, (x, y) in enumerate(train_loader, 1):
-
+            #if batch_index % 40 == 0 or batch_index==1:
+            #    print("Batch index", batch_index)
             tracks, gt_anns = x.to(device), y.to(device).long()
             optimizer.zero_grad()
-            #print("batch", tracks.shape, gt_anns.shape)
             model_output = model.forward(tracks)
 
             loss = loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())

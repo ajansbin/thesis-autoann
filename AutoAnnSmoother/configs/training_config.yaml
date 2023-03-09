@@ -7,6 +7,12 @@ model:
     feat_size: 1024
     mlp1_sizes: [64,64,128,512]
     mlp2_sizes: [128,128]
+    mlp3_sizes: [512,256]
+  transformer:
+    input_dim: 11
+    out_size: 11
+    mlp_sizes: [64,64,128,512]
+    num_heads: 8
 
 ### Dataclass ###
 data:
@@ -19,7 +25,6 @@ data:
   sliding_window: true
   gt_dim: 11 # same as out_dim for the model
   gt_assoc_threshold:  10
-  max_tracks: 50 # not used
   normalize:
     normalize: true
     center:
@@ -40,9 +45,9 @@ train:
   learning_rate: 1.0E-3
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 8
+  batch_size: 400
   n_workers: 1
-  n_epochs: 10
+  n_epochs: 5
   seed: 0
 
 loss:

@@ -45,7 +45,7 @@ def associate(gt_boxes, pred_boxes, threshold = 100):
     return gt_assoc   
 
 def l2(gts, preds):
-    gt_centers = np.stack([gt.translation for gt in gts]).reshape((-1, 1, 3))  # M x 3
-    pred_centers = np.stack([pred.translation for pred in preds]).reshape((1, -1, 3))
+    gt_centers = np.stack([gt["translation"] for gt in gts]).reshape((-1, 1, 3))  # M x 3
+    pred_centers = np.stack([pred["translation"] for pred in preds]).reshape((1, -1, 3))
     dists = np.linalg.norm(gt_centers[:, :, :2] - pred_centers[:, :, :2], axis=2)
     return dists

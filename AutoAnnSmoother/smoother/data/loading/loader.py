@@ -5,10 +5,6 @@ def load_prediction(result_path: str):
     """
     Loads object predictions from file.
     :param result_path: Path to the .json result file provided by the user.
-    :param max_boxes_per_sample: Maximim number of boxes allowed per sample.
-    :param box_cls: Type of box to load, e.g. DetectionBox or TrackingBox.
-    :param verbose: Whether to print messages to stdout.
-    :return: The deserialized results and meta data.
     """
 
     pred_boxes = defaultdict(list)
@@ -27,3 +23,5 @@ def load_prediction(result_path: str):
     meta = data['meta']
 
     return pred_boxes, meta
+
+

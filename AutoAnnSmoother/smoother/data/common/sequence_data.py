@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from collections import defaultdict
 import numpy as np
-from .box3d import l2
+#from .box3d import l2
 
 # This class will be inherited for all different datatypes e.g. nuscenes and zod. 
 class TrackingResults():
@@ -211,3 +211,9 @@ class SlidingWindowTracksData():
             wind_track_nusc = WindowTracksData(self.tracking_results,window,self.means, self.stds)
             for track in wind_track_nusc:
                 yield track
+
+def l2(gts, preds):
+    gt_centers = np.stack([gt["translation"] for gt in gts]).reshape((-1, 1, 3))  # M x 3
+    pred_centers = np.stack([pred["translation"] for pred in preds]).reshape((1, -1, 3))
+    dists = np.linalg.norm(gt_centers[:, :, :2] - pred_centers[:, :, :2], axis=2)
+    return dists
