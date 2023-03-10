@@ -39,6 +39,6 @@ COPY . /AutoAnnSmoother
 WORKDIR /AutoAnnSmoother
 
 RUN pip install -r requirements.txt --ignore-installed llvmlite
-RUN python setup.py install
+RUN pip install -e .
 RUN pip install numpy==1.19.2 --no-cache-dir
 

@@ -1,8 +1,10 @@
-from smoother.io.load_config import load_config
-from tools.utils.training_utils import Trainer
+from smoother.io.config_utils import load_config
+from smoother.io.logging_utils import configure_loggings
+from tools.utils.training_utils import TrainingUtils
 from smoother.data.common.sequence_data import SlidingWindowTracksData, WindowTracksData
 from smoother.models.pointnet import PointNet
 from smoother.models.transformer import PointTransformer
+from smoother.models.box_refinement_loss import BoxRefinementLoss
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
@@ -10,12 +12,13 @@ from torch.utils.data import random_split, DataLoader
 
 class SmoothingTrainer():
 
-    def __init__(self, tracking_results_path, conf_path, data_path, save_dir):
+    def __init__(self, tracking_results_path, conf_path, data_path, save_dir, run_name):
         print("---Initializing SmoothingTrainer class---")
         self.tracking_results_path = tracking_results_path
         self.conf_path = conf_path
         self.data_path = data_path
         self.save_dir = save_dir
+        self.run_name = run_name
 
         self.conf = self._get_config(self.conf_path)
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
@@ -40,8 +43,14 @@ class SmoothingTrainer():
         self.tracking_results = None
         self.data_model = None
         self.model = None
+        self.n_train_batches = 0
+        self.n_val_batches = 0
         self.trained_model = None
         self.result_dict = {}
+
+        print("---Setting up wandb-logger---")
+        self.log_out = configure_loggings(self.run_name, self.save_dir, self.conf)
+
 
 
     def _get_config(self, conf_path):
@@ -49,7 +58,6 @@ class SmoothingTrainer():
 
     def load_data(self):
         print("---Loading data---")
-
         # Load datatype specific results from tracking
         if self.data_type == 'nuscenes':
             from smoother.data.nuscenes_data import NuscTrackingResults
@@ -106,9 +114,12 @@ class SmoothingTrainer():
 
     def train(self):
         print("---Starting training---")
+
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr,  weight_decay=self.wd)
-        trainer = Trainer(self.conf, self.model_type)
-        loss_fn = trainer.box_regression_loss
+        tu = TrainingUtils(self.conf, self.model_type, self.log_out)
+
+
+        loss_fn = tu.brl
 
         torch.manual_seed(self.seed)
         size = len(self.data_model)
@@ -120,7 +131,10 @@ class SmoothingTrainer():
         train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
         val_dataloader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
 
-        self.trained_model, train_losses, val_losses = trainer.training_loop(self.model,optimizer,loss_fn,self.n_epochs, train_dataloader, val_dataloader)
+        self.n_train_batches = len(train_dataloader)
+        self.n_val_batches = len(val_dataloader)
+
+        self.trained_model, train_losses, val_losses = tu.training_loop(self.model,optimizer,self.n_epochs, train_dataloader, val_dataloader)
         self.result_dict = {"train_losses": train_losses, "val_losses":val_losses}
         print("---Finished training---")
 
@@ -141,7 +155,38 @@ class SmoothingTrainer():
         torch.save(self.trained_model.state_dict(), model_path)
 
         # save losses
-        losses_path = os.path.join(save_dir_full, model_name + "_losses.sjon")
+        losses_path = os.path.join(save_dir_full, model_name + "_losses.json")
         json_object = json.dumps(self.result_dict)
         with open(losses_path, "w") as outfile:
             outfile.write(json_object)
+
+        plot_path = os.path.join(save_dir_full, model_name + "_plot.png")
+        self._plot_results(plot_path)
+
+    def _plot_results(self, save_dir):
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        def moving_average(a, n=3) :
+            ret = np.cumsum(a, dtype=float)
+            ret[n:] = ret[n:] - ret[:-n]
+            return ret[n - 1:] / n
+        
+        train_losses = self.result_dict["train_losses"]
+        val_losses = self.result_dict["val_losses"]
+
+        window = 100
+        train_loss_ma = moving_average(train_losses, window)
+
+        batches_per_epoch = self.n_train_batches
+        x = range(1,len(train_losses)-window+2)
+        x_val = np.arange(1, len(val_losses)+1) * batches_per_epoch
+
+        plt.plot(x, train_loss_ma, label="Training")
+        plt.plot(x_val, val_losses, label = "Validation")
+        #plt.xlim((200,20000))
+        #plt.ylim((500,4000))
+        plt.xlabel("Batch number")
+        plt.ylabel("Loss")
+        plt.legend(loc= "upper right")
+        plt.savefig(save_dir)

@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from collections import defaultdict
 import numpy as np
+import copy
 #from .box3d import l2
 
 # This class will be inherited for all different datatypes e.g. nuscenes and zod. 
@@ -19,6 +20,7 @@ class TrackingResults():
         self.window_size = self.config["data"]["window_size"]
         self.gt_dim = self.config["data"]["gt_dim"]
         self.gt_assoc_threshold = self.config["data"]["gt_assoc_threshold"]
+        self.score_dist_temp = self.config["data"]["score_dist_temp"]
 
     def load_tracking_predictions(self, tracking_results_path):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
@@ -64,6 +66,7 @@ class SequenceData():
         self.foi_index = foi_index
         self.gt_dim = self.tracking_results.gt_dim
         self.gt_assoc_threshold = self.tracking_results.gt_assoc_threshold
+        self.score_dist_temp = self.tracking_results.score_dist_temp
 
     def __len__(self):
         return self.tracking_results.get_number_of_sequences()
@@ -109,8 +112,8 @@ class SequenceData():
             center = list(box['translation'])
             size = list(box['size'])
             rotation = list(box['rotation'])
-            exist = [1]
-            point = center + size + rotation + exist
+            target_confidence = [np.exp(-self.score_dist_temp*box["distance"])]
+            point = center + size + rotation + target_confidence
             
         return point
 
@@ -147,9 +150,12 @@ class SequenceData():
             # loop through all predictions
             this_dists = dists[:, pred_idx].copy()
             gt_idx = np.argmin(this_dists)
+
+            closest_gt = copy.deepcopy(frame_gt_boxes[gt_idx])
+            closest_gt["distance"] = this_dists[gt_idx]
             valid_match = dists[gt_idx, pred_idx] <= self.gt_assoc_threshold
             if valid_match:
-                gt_track_id_assocs[pred_box['tracking_id']] =  frame_gt_boxes[gt_idx]
+                gt_track_id_assocs[pred_box['tracking_id']] =  closest_gt
             else:
                 gt_track_id_assocs[pred_box['tracking_id']] =  None
 

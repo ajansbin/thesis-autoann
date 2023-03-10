@@ -1,105 +1,93 @@
 import torch
 from torch import nn
 import numpy as np
+from smoother.io.logging_utils import log_batch_stats, log_epoch_stats
+from smoother.models.box_refinement_loss import BoxRefinementLoss
 
-class Trainer():
+class TrainingUtils():
 
-    def __init__(self, conf, model_type:str):
+    def __init__(self, conf, model_type:str, log_out:str):
         self.conf = conf
+        self.model_type = model_type
+        self.log_out = log_out
         self.out_size = conf["model"][model_type]["out_size"]
         self.loss_params = conf["loss"]
 
-
-    def training_loop(self, model, optimizer, loss_fn, n_epochs, train_loader, val_loader):
-        print("Training started!")
-        device = torch.device("cuda" if torch.cuda.is_available() 
+        self.device = torch.device("cuda" if torch.cuda.is_available() 
                                         else "cpu")
-        #device="cpu"
-        model.to(device)
+
+        loss_conf = self.conf["loss"]
+        self.brl = BoxRefinementLoss(loss_conf)
+        self.loss_fn = self.brl.loss
+
+
+    def training_loop(self, model, optimizer, n_epochs, train_loader, val_loader):
+
+        print("Training started!")
+
+        model.to(self.device)
         train_losses, val_losses = [], []
 
         for epoch in range(1,n_epochs+1):
             print("Epoch nr", epoch)
             model, train_loss = self._train_epoch(model,
                                             optimizer,
-                                            loss_fn,
                                             train_loader,
-                                            val_loader,
-                                            device)
+                                            epoch)
             print("Epoch training finished! Starting validation")
-            val_loss = self._validate(model, loss_fn, val_loader, device)
+            val_loss, improvements = self._validate(model, val_loader)
+
+            log_train_loss = round(sum(train_loss)/len(train_loader),3)
+            log_val_loss = round(val_loss/len(val_loader), 3)
+
             print(f"Epoch {epoch}/{n_epochs}: "
-                f"Train loss: {sum(train_loss)/len(train_loss):.3f}, "
-                f"Val. loss: {val_loss:.3f}, ")
+                f"Train loss: {log_train_loss}, "
+                f"Val. loss: {log_val_loss}, ")
             train_losses.extend(train_loss)
             val_losses.append(val_loss)
+
+            losses = {"train_loss": log_train_loss, "val_loss": log_val_loss}
+            log_epoch_stats(losses, improvements, epoch, 'TRAIN', self.log_out)
         return model, train_losses, val_losses
 
-    def _train_epoch(self, model, optimizer, loss_fn, train_loader, val_loader, device):
+    def _train_epoch(self, model, optimizer, train_loader, epoch):
         model.train()
         train_loss_batches = []
         num_batches = len(train_loader)
         
         for batch_index, (x, y) in enumerate(train_loader, 1):
-            #if batch_index % 40 == 0 or batch_index==1:
-            #    print("Batch index", batch_index)
-            tracks, gt_anns = x.to(device), y.to(device).long()
+            tracks, gt_anns = x.to(self.device), y.to(self.device)
             optimizer.zero_grad()
             model_output = model.forward(tracks)
 
-            loss = loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
+            loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
 
             loss.backward()
             optimizer.step()
             train_loss_batches.append(loss.item())
+
+            if batch_index % 50 == 0:
+                log_batch_stats(loss,None,epoch, batch_index, num_batches, 'TRAIN', self.log_out)
             
         return model, train_loss_batches
 
-    def _validate(self, model, loss_fn, val_loader, device):
+    def _validate(self, model, val_loader):
         val_loss_cum = 0
         val_acc_cum = 0
         model.eval()
         with torch.no_grad():
             for batch_index, (x, y) in enumerate(val_loader, 1):
-                tracks, gt_anns = x.to(device), y.to(device)
+                tracks, gt_anns = x.to(self.device), y.to(self.device)
                 model_output = model.forward(tracks)
-                loss = loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
+                loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
                 val_loss_cum += loss.item()
-
-        return val_loss_cum/len(val_loader)
+                foi_index = self._find_foi_index(tracks)
+                foi_dets = tracks[:,foi_index]
+                improvements = self.brl.evaluate_model(foi_dets.view(-1, self.out_size),model_output.view(-1, self.out_size),gt_anns.float())
+                
+        return val_loss_cum, improvements
     
-    def compute_score_loss(self, predictions, gts):
-        scores = predictions[:,10]
-        gt_score = gts[:,10]
-        m = nn.Sigmoid()
-        loss = nn.BCELoss()
-        out = loss(m(scores),gt_score)
-        return out
-
-
-
-    def compute_loss(self, predictions, gts):
-        #print("Loss", predictions.shape, gts.shape)
-        centers = predictions[:,:3]
-        gt_centers = gts[:,:3]
-        center_loss = torch.linalg.norm(gt_centers-centers)
-
-        sizes = predictions[:,3:6]
-        gt_sizes = gts[:,3:6]
-        size_loss = torch.linalg.norm(gt_sizes-sizes)
-
-        rotation = predictions[:,6:10]
-        gt_rotation = gts[:,6:10]
-        rotation_loss = torch.linalg.norm(gt_rotation-rotation)
-
-        return center_loss, size_loss, rotation_loss
-
-    def box_regression_loss(self, predictions, gt):
-        center_loss, size_loss, rotation_loss = self.compute_loss(predictions, gt)
-        score_loss = self.compute_score_loss(predictions,gt)
-        center_loss *= self.loss_params["weight"]["center"]
-        size_loss *= self.loss_params["weight"]["size"]
-        rotation_loss *= self.loss_params["weight"]["rotation"]
-        score_loss *= self.loss_params["weight"]["score"]
-        #print(center_loss, size_loss, rotation_loss, score_loss)
-        return center_loss + size_loss + rotation_loss + score_loss
+    def _find_foi_index(self, tracks):
+        indices = (tracks[:,:,10] == 0).nonzero()
+        rows_of_10 = indices[:, 1]
+        return rows_of_10[0].item()

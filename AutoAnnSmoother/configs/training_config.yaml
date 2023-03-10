@@ -22,9 +22,10 @@ data:
   feature_dim: 11 #same as input_dim for the model
   foi_index: 20 # index in sequence where annotation exist TO BE REMOVED
   window_size: 5
-  sliding_window: true
+  sliding_window: false
   gt_dim: 11 # same as out_dim for the model
   gt_assoc_threshold:  10
+  score_dist_temp: 1
   normalize:
     normalize: true
     center:
@@ -38,19 +39,20 @@ data:
       stdev: [0.49542883964751927, 0.012178789304299975, 0.012164937100250302, 0.5091894144363663]
     score:
       mean: [0.0]
-      stdev: [1.4142260170824255]
+      stdev: [1]
 
 ### Training Specific ###
 train:
-  learning_rate: 1.0E-3
+  learning_rate: 3.0E-3
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 400
-  n_workers: 1
+  batch_size: 100
+  n_workers: 4
   n_epochs: 5
   seed: 0
 
 loss:
+  type: "l1" # one of [l1, iou, giou]
   weight:
     center: 2
     size : 1
