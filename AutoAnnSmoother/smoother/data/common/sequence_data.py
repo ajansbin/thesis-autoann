@@ -51,6 +51,12 @@ class TrackingResults():
 
     def get_length_of_sequence(self, seq):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
+    
+    def get_timestamp_from_frame(self, frame_token):
+        raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
+    
+    def get_foi_index(self, seq_token):
+        raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
 
 
 
@@ -58,7 +64,6 @@ class SequenceData():
 
     def __init__(self, tracking_results: TrackingResults, window: tuple, foi_index=20):
         self.tracking_results = tracking_results
-        #self.nusc = self.tracking_results.nusc
         self.start_ind, self.end_ind = window
 
         self.feature_dim = self.tracking_results.feature_dim
@@ -68,15 +73,19 @@ class SequenceData():
         self.gt_assoc_threshold = self.tracking_results.gt_assoc_threshold
         self.score_dist_temp = self.tracking_results.score_dist_temp
 
+
     def __len__(self):
         return self.tracking_results.get_number_of_sequences()
 
     def __getitem__(self, index):
         seq_token = self.tracking_results.get_sequence_id_from_index(index)
-        seq_tokens = self.tracking_results.get_frames_in_sequence(seq_token)
-        window_tokens = seq_tokens[self.start_ind:self.end_ind]
-        foi_ind = self._get_frame_of_interest()
-        foi_token = seq_tokens[foi_ind]
+        seq_frames = self.tracking_results.get_frames_in_sequence(seq_token)
+        foi_ind = self._get_frame_of_interest(seq_token)
+
+        wind_start = foi_ind + self.start_ind
+        wind_end = foi_ind + self.end_ind
+        window_tokens = seq_frames[wind_start:wind_end]
+        foi_token = seq_frames[foi_ind]
 
         gt_assoc = self._get_corresponding_foi_gt_boxes(foi_token) #get all gt boxes for foi for all boxes
         track_id_pc = defaultdict(list)
@@ -91,10 +100,9 @@ class SequenceData():
                 center = list(box['translation'])
                 size = list(box['size'])
                 rotation = list(box['rotation'])
-                temp_encoding = [i+self.start_ind-foi_ind]
+                temp_encoding = [i+self.start_ind-foi_ind] #
                 point = center + size + rotation + temp_encoding
                 track_id_pc[box['tracking_id']][i] = point
-
         x, y = [], []
         for track_id, point_cloud in track_id_pc.items():
             if track_id in gt_assoc: # track_id2 
@@ -128,8 +136,8 @@ class SequenceData():
             frame_token = self.tracking_results.get_next_frame(frame)
         return seq_frames
     
-    def _get_frame_of_interest(self):
-        return self.foi_index
+    def _get_frame_of_interest(self,seq_token):
+        return self.foi_index if self.foi_index else self.tracking_results.get_foi_index(seq_token)
     
     def _get_track_ids(self, pred_foi_boxes):
         return [box['tracking_id'] for box in pred_foi_boxes]
@@ -137,6 +145,7 @@ class SequenceData():
     def _get_corresponding_foi_gt_boxes(self, frame_token):
         frame_gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
         frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
+
         gt_track_id_assocs = {}
         if len(frame_gt_boxes) == 0:
             for pred_idx, pred_box in enumerate(frame_pred_boxes):
@@ -209,10 +218,9 @@ class SlidingWindowTracksData():
     
     def _get_data_samples(self):
         for i in range(self.window_size):
-            if self.foi_index - self.window_size + i < 0:
-                continue
-            start_ind = self.foi_index-self.window_size + i + 1
+            start_ind = i - self.window_size + 1
             end_ind = start_ind + self.window_size - 1
+
             window = (start_ind, end_ind)
             wind_track_nusc = WindowTracksData(self.tracking_results,window,self.means, self.stds)
             for track in wind_track_nusc:

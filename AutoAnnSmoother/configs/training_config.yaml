@@ -16,13 +16,13 @@ model:
 
 ### Dataclass ###
 data:
-  type: nuscenes # one of [nuscenes, zod]
-  version: v1.0-trainval
-  split: val
+  type: zod # one of [nuscenes, zod]
+  version: full
+  split: train
   feature_dim: 11 #same as input_dim for the model
-  foi_index: 20 # index in sequence where annotation exist TO BE REMOVED
-  window_size: 5
-  sliding_window: false
+  foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
+  window_size: 20
+  sliding_window: true
   gt_dim: 11 # same as out_dim for the model
   gt_assoc_threshold:  10
   score_dist_temp: 1

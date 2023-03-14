@@ -41,4 +41,6 @@ WORKDIR /AutoAnnSmoother
 RUN pip install -r requirements.txt --ignore-installed llvmlite
 RUN pip install -e .
 RUN pip install numpy==1.19.2 --no-cache-dir
+RUN pip uninstall psutil -y
+RUN pip install psutil==5.9.4
 

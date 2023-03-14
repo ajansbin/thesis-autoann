@@ -31,8 +31,8 @@ def print_epoch_stats(log_out, epoch, losses, metrics, type_id='TRAIN'):
     log(log_out, '[Epoch %d: Summary] %s' % (epoch, type_id))
     for k, loss in losses.items():
         log(log_out, '             %s: %f' % (k, loss))
-    for k, metric in metrics.items():
-        log(log_out, '             %s: %f' % (k, metric))
+    #for k, metric in metrics.items():
+    #    log(log_out, '             %s: %f' % (k, metric))
     log(log_out, '==================================================================')
 
 
@@ -45,9 +45,8 @@ def log_batch_stats(losses, metrics, epoch, batch_idx, num_batches, mode, log_ou
 
 def log_epoch_stats(losses, metrics, epoch, mode, log_out):
     #losses_formatted, metrics_formatted = format_stats(losses, metrics, mode)
-    wandb.log({**losses, **metrics})
+    wandb.log({**losses})
     print_epoch_stats(log_out, epoch, losses, metrics, mode)
-    wandb.log({**losses, **metrics})
 
 
 

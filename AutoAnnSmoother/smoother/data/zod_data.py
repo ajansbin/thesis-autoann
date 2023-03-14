@@ -3,32 +3,29 @@ import os
 from zod import ZodSequences
 from zod.constants import Lidar
 from smoother.data.loading.loader import load_prediction
+from smoother.data.loading.zod_loader import load_gt
 
 
 class ZodTrackingResults(TrackingResults):
 
     def __init__(self, tracking_results_path, config, version, split, data_path="/data/zod", zod=None):
-        print("Initializing NuscenesData class...")
+        print("Initializing ZodTrackingResults class...")
         super(ZodTrackingResults, self).__init__(tracking_results_path, config, version, split, data_path)
         assert os.path.exists(tracking_results_path), 'Error: The result file does not exist!'
 
         self.zod = ZodSequences(data_path, version) if not zod else zod
-        self.frame_idx = 0
-        # ToDo:Change to ZOD
         assert version in ['full', 'mini'] 
-        self.train_scenes = self.zod.get_split('train')
-        self.val_scenes = self.zod.get_split('val')      
 
-        self.scene_tokens = list(self.zod.get_all_ids())  
-        
-        #self.split_scene_token = set(get_available_scenes(zod, train_scenes))
-        #val_scenes = set(get_available_scenes(zod, val_scenes))
-        
-        # ToDo: Change to ZOD
-        # yields a list of all scene-tokens for the current split
-        #print("Splitting data ...")
-        #self.scene2split = {self.nusc.scene[i]['token']: self._get_scene2split(self.nusc.scene[i]['name']) for i in range(len(self.nusc.scene))}
-        #self.split_scene_token = [scene_token for scene_token in self.scene2split if self.scene2split[scene_token] == self.split]
+        assert split in ['train', 'val']
+        self.seq_tokens = self.zod.get_split(split)
+
+        # Store the FoI-indexes
+        self.foi_indexes = {}
+        for seq_token in self.seq_tokens:
+            self.foi_indexes[seq_token] = self._get_foi_index(seq_token)
+
+        self.ann_path = "/AutoAnnSmoother/storage/zod_annotations/annotations/"
+        #self.ann_path = "/staging/agp/masterthesis/2023autoann/storage/zod_annotations/annotations/"
 
         print("Loading prediction and ground-truths ...")
         self.pred_boxes, self.meta = self.load_tracking_predictions(self.tracking_results_path)
@@ -38,25 +35,26 @@ class ZodTrackingResults(TrackingResults):
         return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
-        return [] #no annotations yet
+        return load_gt(self.ann_path, self.seq_tokens, verbose=True)
     
     def get_sequence_id_from_index(self, index):
-        return self.scene_tokens[index]
+        return self.seq_tokens[index]
     
     #def get_sequence_from_id(self, id):
     #    return self.zod[id]
 
-    def get_frames_in_sequence(self, scene_token):
-        seq = self.zod[scene_token]
+    def get_frames_in_sequence(self, seq_token):
+        seq = self.zod[seq_token]
         lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
         frame_tokens = [os.path.basename(l.to_dict()['filepath']) for l in lidar_frames]
         return frame_tokens
     
     def get_pred_boxes_from_frame(self, frame_token):
-        return self.pred_boxes[frame_token][0]
+        pred_boxes = self.pred_boxes[frame_token]
+        return pred_boxes[0] if len(pred_boxes) > 0 else pred_boxes
     
     def get_gt_boxes_from_frame(self, frame_token):
-        return [] #no annotations yet
+        return self.gt_boxes.get(frame_token, [])
     
     #def get_first_frame_in_sequence(self, seq):
     #    raise NotImplementedError
@@ -67,3 +65,21 @@ class ZodTrackingResults(TrackingResults):
     def get_length_of_sequence(self, seq):
         lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
         return len(lidar_frames)
+    
+    def get_timestamp_from_frame(self, frame_token):
+        # a frame token looks like this 000002_romeo_2022-06-13T10:49:57.555450Z.npy. Extract time-date from name
+        return
+    
+    def get_foi_index(self, seq_token):
+        return self.foi_indexes[seq_token]
+    
+    def _get_foi_index(self, seq_token):
+        seq = self.zod[seq_token]
+        frames = self.get_frames_in_sequence(seq_token)
+
+        lidar_frame_index = None
+        annotated_frame = os.path.basename(seq.info.get_key_lidar_frame().filepath)
+        for i, frame in enumerate(frames):
+            if frame==annotated_frame:
+                lidar_frame_index = i
+        return lidar_frame_index

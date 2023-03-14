@@ -78,6 +78,13 @@ class BoxRefinementLoss():
         ref_centers = refined_dets[:,:3]
         gt_centers = gt_anns[:,:3]
 
+
+        mae_dets_center = F.l1_loss(dets_centers, gt_centers, reduction='mean')
+        mse_dets_center = F.mse_loss(dets_centers, gt_centers, reduction='mean')
+
+        mae_refinement_center = F.l1_loss(ref_centers, gt_centers, reduction='mean')
+        mse_refinement_center = F.mse_loss(ref_center_losses, gt_centers, reduction='mean')
+
         dets_center_losses = F.l1_loss(dets_centers,gt_centers, reduction='none')
         ref_center_losses = F.l1_loss(ref_centers,gt_centers, reduction='none')
 

@@ -47,7 +47,7 @@ class TrainingUtils():
             val_losses.append(val_loss)
 
             losses = {"train_loss": log_train_loss, "val_loss": log_val_loss}
-            log_epoch_stats(losses, improvements, epoch, 'TRAIN', self.log_out)
+            log_epoch_stats(losses, improvements, epoch, mode='TRAIN', log_out=self.log_out)
         return model, train_losses, val_losses
 
     def _train_epoch(self, model, optimizer, train_loader, epoch):
@@ -81,10 +81,11 @@ class TrainingUtils():
                 model_output = model.forward(tracks)
                 loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
                 val_loss_cum += loss.item()
-                foi_index = self._find_foi_index(tracks)
-                foi_dets = tracks[:,foi_index]
-                improvements = self.brl.evaluate_model(foi_dets.view(-1, self.out_size),model_output.view(-1, self.out_size),gt_anns.float())
-                
+                #foi_index = self._find_foi_index(tracks)
+                #foi_dets = tracks[:,foi_index]
+                #improvements = self.brl.evaluate_model(foi_dets.view(-1, self.out_size),model_output.view(-1, self.out_size),gt_anns.float())
+                improvements = None
+
         return val_loss_cum, improvements
     
     def _find_foi_index(self, tracks):
