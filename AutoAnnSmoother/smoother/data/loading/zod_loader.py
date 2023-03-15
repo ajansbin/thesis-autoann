@@ -33,23 +33,27 @@ def get_available_scenes(zod: ZodSequences, split):
     print('exist scene num: {}'.format(len(available_scenes)))
     return available_scenes
 
-def load_gt(ann_path, scene_tokens, verbose=False):
-    #ann_path = "/staging/agp/masterthesis/2023autoann/storage/zod_annotations/annotations/"
-    sequences = [seq for seq in os.listdir(ann_path) if seq in scene_tokens]
+def load_gt(data_path, scene_tokens, verbose=False):
+    sequence_path = os.path.join(data_path, "sequences")
+    sequences = [seq for seq in os.listdir(sequence_path) if seq in scene_tokens]
 
     seq_gt = {}
     for sequence in tqdm.tqdm(sequences, leave=verbose):
-        frame_path = os.path.join(ann_path, sequence, "annotations/dynamic_objects/")
+        frame_path = os.path.join(sequence_path, sequence, "annotations/object_detection/")
         frame_json = os.listdir(frame_path)[0]
-        frame_token  = frame_json.replace(".json", ".npy")
+
+        frame_token  = frame_json
+        seq_token = frame_token[0:6]
         json_path = os.path.join(frame_path,frame_json)
         with open(json_path) as f:
             anns = json.load(f)
 
         frame_anns = []
-        for ann in anns:
+        ignore_counter = 0
+        for i, ann in enumerate(anns):
             ann_obj = AnnotatedObject.from_dict(ann)
             if ann_obj.should_ignore_object(require_3d=True):
+                ignore_counter += 1
                 continue
 
 
@@ -73,7 +77,7 @@ def load_gt(ann_path, scene_tokens, verbose=False):
             
             frame_anns.append(this_box)
         
+        #print(f"Ignored {ignore_counter} annotations for sequence {sequence}, length {len(anns)}")
         if len(frame_anns)>0:
-            seq_gt[frame_token] = frame_anns
+            seq_gt[seq_token] = frame_anns
     return seq_gt
-

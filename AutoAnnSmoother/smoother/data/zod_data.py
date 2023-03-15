@@ -24,9 +24,6 @@ class ZodTrackingResults(TrackingResults):
         for seq_token in self.seq_tokens:
             self.foi_indexes[seq_token] = self._get_foi_index(seq_token)
 
-        self.ann_path = "/AutoAnnSmoother/storage/zod_annotations/annotations/"
-        #self.ann_path = "/staging/agp/masterthesis/2023autoann/storage/zod_annotations/annotations/"
-
         print("Loading prediction and ground-truths ...")
         self.pred_boxes, self.meta = self.load_tracking_predictions(self.tracking_results_path)
         self.gt_boxes = self.load_gt_detections()
@@ -35,7 +32,7 @@ class ZodTrackingResults(TrackingResults):
         return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
-        return load_gt(self.ann_path, self.seq_tokens, verbose=True)
+        return load_gt(self.data_path, self.seq_tokens, verbose=True)
     
     def get_sequence_id_from_index(self, index):
         return self.seq_tokens[index]
@@ -54,7 +51,8 @@ class ZodTrackingResults(TrackingResults):
         return pred_boxes[0] if len(pred_boxes) > 0 else pred_boxes
     
     def get_gt_boxes_from_frame(self, frame_token):
-        return self.gt_boxes.get(frame_token, [])
+        seq_token = frame_token[0:6]
+        return self.gt_boxes.get(seq_token, [])
     
     #def get_first_frame_in_sequence(self, seq):
     #    raise NotImplementedError

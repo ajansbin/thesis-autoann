@@ -91,6 +91,8 @@ class SequenceData():
         track_id_pc = defaultdict(list)
         for i, frame_token in enumerate(window_tokens):
             frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
+            if frame_pred_boxes == []:
+                continue
             for box in frame_pred_boxes:
                 if not box['tracking_id'] in track_id_pc:
                     t_encs = [i+self.start_ind-foi_ind for i in range(self.window_size)]
@@ -146,6 +148,9 @@ class SequenceData():
         frame_gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
         frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
 
+        if len(frame_pred_boxes) == 0:
+            return []
+    
         gt_track_id_assocs = {}
         if len(frame_gt_boxes) == 0:
             for pred_idx, pred_box in enumerate(frame_pred_boxes):
