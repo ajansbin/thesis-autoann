@@ -9,7 +9,7 @@ from smoother.data.loading.zod_loader import load_gt
 class ZodTrackingResults(TrackingResults):
 
     def __init__(self, tracking_results_path, config, version, split, data_path="/data/zod", zod=None):
-        print("Initializing ZodTrackingResults class...")
+        print("Initializing ZodData class...")
         super(ZodTrackingResults, self).__init__(tracking_results_path, config, version, split, data_path)
         assert os.path.exists(tracking_results_path), 'Error: The result file does not exist!'
 
