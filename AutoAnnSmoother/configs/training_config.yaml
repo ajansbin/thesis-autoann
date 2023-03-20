@@ -2,7 +2,7 @@
 model:
   type: pointnet # one of [pointnet]
   pointnet:
-    input_dim: 11 # center + size + rotation + temporal encoding (#frames from FoI)
+    input_dim: 11 # center + size + rotation + class + temporal encoding # THESE SHOULD NOT BE IN CONFIG
     out_size: 11
     feat_size: 1024
     mlp1_sizes: [64,64,128,512]
@@ -18,32 +18,35 @@ model:
 data:
   type: zod # one of [nuscenes, zod]
   version: full
-  split: train
+  split: val
   feature_dim: 11 #same as input_dim for the model
   foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
-  window_size: 20
+  window_size: 5
   sliding_window: true
-  gt_dim: 11 # same as out_dim for the model
+  gt_dim: 11
   gt_assoc_threshold:  10
   score_dist_temp: 1
-  normalize:
-    normalize: true
-    center:
-      mean: [574.1930785274128, 670.7998506479671, 0.580930008568242]
-      stdev: [905.083423267894, 1008.5718984788836, 1.0236514882173895]
-    size:
-      mean: [0.6920983855701238, 1.6819778023139855, 0.8968053990132691]
-      stdev: [1.1169891897664832, 3.056637190446677, 1.3291400606726422]
-    rotation:
-      mean: [-0.015093690155607173, 0.00010917267531814528, 0.0005753381085802861, -0.01973784823367098]
-      stdev: [0.49542883964751927, 0.012178789304299975, 0.012164937100250302, 0.5091894144363663]
-    score:
-      mean: [0.0]
-      stdev: [1]
+  transformations:
+    center_offset: true
+    yaw_offset: true #not implemented yet
+    normalize:
+      normalize: true
+      center: # this is offset-dependent normalization
+        mean: [0.03621180372581629, -0.2099173730468761, 0.0026075183395728057]
+        stdev: [5.865156088128115, 11.65336534100735, 0.4232649214239788]
+      size:
+        mean:  [3.664073049531213, 1.587799651724494, 1.7577496072774077]
+        stdev: [4.607203312479755, 1.728919607809592, 1.8375323855211547]
+      rotation:
+        mean: [0.517103294721415, 0.0, 0.0, 0.5277412706723021]
+        stdev: [0.6856551746488713, 1.0, 1.0, 0.7279287477380058]
+      score:
+        mean: [0.0]
+        stdev: [1]
 
 ### Training Specific ###
 train:
-  learning_rate: 3.0E-3
+  learning_rate: 3.0E-5
   weight_decay: 1.0E-5
   train_size: 0.8
   batch_size: 100

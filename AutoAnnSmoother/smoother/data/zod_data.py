@@ -5,6 +5,26 @@ from zod.constants import Lidar
 from smoother.data.loading.loader import load_prediction
 from smoother.data.loading.zod_loader import load_gt
 
+OBJECT_CLASSES_DYNAMIC = [
+    "Vehicle",
+    "VulnerableVehicle",
+    "Pedestrian",
+    "Animal",
+]
+OBJECT_CLASSES_STATIC = [
+    "PoleObject",
+    "TrafficBeacon",
+    "TrafficSign",
+    "TrafficSignal",
+    "TrafficGuide",
+    "DynamicBarrier",
+]
+OBJECT_CLASSES = [
+    *OBJECT_CLASSES_DYNAMIC,
+    *OBJECT_CLASSES_STATIC,
+    "Inconclusive",
+]
+
 
 class ZodTrackingResults(TrackingResults):
 
@@ -13,8 +33,8 @@ class ZodTrackingResults(TrackingResults):
         super(ZodTrackingResults, self).__init__(tracking_results_path, config, version, split, data_path)
         assert os.path.exists(tracking_results_path), 'Error: The result file does not exist!'
 
-        self.zod = ZodSequences(data_path, version) if not zod else zod
         assert version in ['full', 'mini'] 
+        self.zod = ZodSequences(data_path, version) if not zod else zod
 
         assert split in ['train', 'val']
         self.seq_tokens = self.zod.get_split(split)
@@ -28,6 +48,8 @@ class ZodTrackingResults(TrackingResults):
         self.pred_boxes, self.meta = self.load_tracking_predictions(self.tracking_results_path)
         self.gt_boxes = self.load_gt_detections()
 
+        self.object_classes = OBJECT_CLASSES
+
     def load_tracking_predictions(self, tracking_results_path):
         return load_prediction(tracking_results_path)
     
@@ -39,6 +61,9 @@ class ZodTrackingResults(TrackingResults):
     
     #def get_sequence_from_id(self, id):
     #    return self.zod[id]
+
+    def get_class_label(self, class_name):
+        return self.object_classes.index(class_name)
 
     def get_frames_in_sequence(self, seq_token):
         seq = self.zod[seq_token]

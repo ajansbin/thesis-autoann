@@ -1,3 +1,5 @@
+# TO BE REMOVED
+
 import torch
 import torch.nn.functional as F
 from collections import defaultdict
@@ -102,8 +104,9 @@ class SequenceData():
                 center = list(box['translation'])
                 size = list(box['size'])
                 rotation = list(box['rotation'])
+                class_label = [self.tracking_results.object_classes.index(box["tracking_name"])]
                 temp_encoding = [i+self.start_ind-foi_ind] #
-                point = center + size + rotation + temp_encoding
+                point = center + size + rotation + class_label + temp_encoding
                 track_id_pc[box['tracking_id']][i] = point
         x, y = [], []
         for track_id, point_cloud in track_id_pc.items():
@@ -122,8 +125,9 @@ class SequenceData():
             center = list(box['translation'])
             size = list(box['size'])
             rotation = list(box['rotation'])
+            class_label = [self.tracking_results.object_classes.index(box["detection_name"])]
             target_confidence = [np.exp(-self.score_dist_temp*box["distance"])]
-            point = center + size + rotation + target_confidence
+            point = center + size + rotation + class_label + target_confidence
             
         return point
 
@@ -167,7 +171,7 @@ class SequenceData():
 
             closest_gt = copy.deepcopy(frame_gt_boxes[gt_idx])
             closest_gt["distance"] = this_dists[gt_idx]
-            valid_match = dists[gt_idx, pred_idx] <= self.gt_assoc_threshold
+            valid_match = dists[gt_idx, pred_idx] <= self.gt_assoc_threshold 
             if valid_match:
                 gt_track_id_assocs[pred_box['tracking_id']] =  closest_gt
             else:
@@ -191,6 +195,7 @@ class WindowTracksData():
         if self.means is not None and self.stds is not None:
            track = (track - self.means)/self.stds
            n_norm_features = len(track[0])
+           #print(n_norm_features, track_gt, self.means, self.stds)
            track_gt[:n_norm_features] = (track_gt[:n_norm_features] - self.means) / self.stds
 
         return (track, track_gt)

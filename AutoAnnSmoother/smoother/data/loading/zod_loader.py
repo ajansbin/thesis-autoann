@@ -33,6 +33,9 @@ def get_available_scenes(zod: ZodSequences, split):
     print('exist scene num: {}'.format(len(available_scenes)))
     return available_scenes
 
+
+VALID_OBJECTS = ["Vehicle","VulnerableVehicle","Pedestrian"]
+
 def load_gt(data_path, scene_tokens, verbose=False):
     sequence_path = os.path.join(data_path, "sequences")
     sequences = [seq for seq in os.listdir(sequence_path) if seq in scene_tokens]
@@ -52,7 +55,7 @@ def load_gt(data_path, scene_tokens, verbose=False):
         ignore_counter = 0
         for i, ann in enumerate(anns):
             ann_obj = AnnotatedObject.from_dict(ann)
-            if ann_obj.should_ignore_object(require_3d=True):
+            if ann_obj.should_ignore_object(require_3d=True) or ann_obj.name not in VALID_OBJECTS:
                 ignore_counter += 1
                 continue
 

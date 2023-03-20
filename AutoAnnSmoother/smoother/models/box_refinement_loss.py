@@ -32,7 +32,6 @@ class BoxRefinementLoss():
         rotation = predictions[:,6:10]
         gt_rotation = gts[:,6:10]
         rotation_loss = F.l1_loss(rotation,gt_rotation, reduction="mean")
-
         return center_loss, size_loss, rotation_loss
 
     def iou_loss(self, predictions, gts):
@@ -71,6 +70,7 @@ class BoxRefinementLoss():
         size_loss *= self.loss_weights["size"]
         rotation_loss *= self.loss_weights["rotation"]
         score_loss *= self.loss_weights["score"]
+        l = center_loss + size_loss + rotation_loss + score_loss
         return center_loss + size_loss + rotation_loss + score_loss
     
     def evaluate_model(self, dets, refined_dets, gt_anns):

@@ -6,8 +6,9 @@ import wandb
 import os
 
 def configure_loggings(run_name, out_dir, conf):
-    wandb.init(name=run_name, project="AutoAnnSmoothing-train", config=conf)
-    log_out = os.path.join(out_dir, 'train_log.txt')
+    out_dir_path = os.path.join(out_dir, "wandb")
+    wandb.init(name=run_name, project="AutoAnnSmoothing-train", config=conf, dir=out_dir_path)
+    log_out = os.path.join(out_dir_path, 'train_log.txt')
     log(log_out, conf)
     return log_out
 

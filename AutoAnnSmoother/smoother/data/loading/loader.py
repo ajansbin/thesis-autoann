@@ -1,5 +1,6 @@
 from collections import defaultdict
 import json
+import tqdm
 
 def load_prediction(result_path: str):
     """
@@ -12,12 +13,10 @@ def load_prediction(result_path: str):
     # Load from file and check that the format is correct.
     with open(result_path) as f:
         data = json.load(f)
-    assert 'results' in data, 'Error: No field `results` in result file. Please note that the result format changed.' \
-                              'See https://www.nuscenes.org/object-detection for more information.'
+    assert 'results' in data, 'Error: No field `results` in result file.'
 
     # Deserialize results and get meta data.
-
-    for sample_token, boxes in data['results'].items():
+    for sample_token, boxes in tqdm.tqdm(data['results'].items(), leave=True):
          pred_boxes[sample_token].append(boxes)
 
     meta = data['meta']

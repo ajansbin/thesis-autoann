@@ -1,10 +1,10 @@
 from smoother.io.config_utils import load_config
 from smoother.io.logging_utils import configure_loggings
 from tools.utils.training_utils import TrainingUtils
-from smoother.data.common.sequence_data import SlidingWindowTracksData, WindowTracksData
+from smoother.data.common.tracking_data import SlidingWindowTrackingData, WindowTrackingData
+from smoother.data.common.transformations import ToTensor, CenterOffset, Normalize
 from smoother.models.pointnet import PointNet
 from smoother.models.transformer import PointTransformer
-from smoother.models.box_refinement_loss import BoxRefinementLoss
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
@@ -28,8 +28,6 @@ class SmoothingTrainer():
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
         
-        self.normalize = self.conf["data"]["normalize"]["normalize"]
-
         self.model_type = self.conf["model"]["type"]
 
         self.lr = self.conf["train"]["learning_rate"]
@@ -68,32 +66,36 @@ class SmoothingTrainer():
         else:
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
         
-        #Normalization
-        if self.normalize:
-            center_mean = self.conf["data"]["normalize"]["center"]["mean"]
-            center_stdev = self.conf["data"]["normalize"]["center"]["stdev"]
-            size_mean = self.conf["data"]["normalize"]["size"]["mean"]
-            size_stdev = self.conf["data"]["normalize"]["size"]["stdev"]
-            rotation_mean = self.conf["data"]["normalize"]["rotation"]["mean"]
-            rotation_stdev = self.conf["data"]["normalize"]["rotation"]["stdev"]
-            score_mean = self.conf["data"]["normalize"]["score"]["mean"]
-            score_stdev = self.conf["data"]["normalize"]["score"]["stdev"]
-
-            means = center_mean + size_mean + rotation_mean + score_mean
-            stdev = center_stdev + size_stdev + rotation_stdev + score_stdev
-        else:
-            means, stdev = None, None
-
+        transformations = self._add_transformations(self.conf["data"]["transformations"])
 
         # Load data model
         if self.sliding_window:
-            self.data_model = SlidingWindowTracksData(self.tracking_results,self.window_size, self.foi_index, means, stdev)
+            self.data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations)
         else:
-            start_ind = int(self.foi_index - (self.window_size-1)/2)
-            end_ind = int(self.foi_index + (self.window_size-1)/2)
-            window = (start_ind, end_ind)
-            self.data_model = WindowTracksData(self.tracking_results,window, means, stdev)
+            start_ind = int(-(self.window_size-1)/2)
+            end_ind = int((self.window_size-1)/2)
+            self.data_model = WindowTrackingData(self.tracking_results,start_ind, end_ind, transformations)
 
+    def _add_transformations(self, transformations_dict):
+        transformations = [ToTensor()]
+
+        if transformations_dict["normalize"]["normalize"]:
+            center_mean = transformations_dict["normalize"]["center"]["mean"]
+            center_stdev = transformations_dict["normalize"]["center"]["stdev"]
+            size_mean = transformations_dict["normalize"]["size"]["mean"]
+            size_stdev = transformations_dict["normalize"]["size"]["stdev"]
+            rotation_mean = transformations_dict["normalize"]["rotation"]["mean"]
+            rotation_stdev = transformations_dict["normalize"]["rotation"]["stdev"]
+            score_mean = transformations_dict["normalize"]["score"]["mean"]
+            score_stdev = transformations_dict["normalize"]["score"]["stdev"]
+
+            means = center_mean + size_mean + rotation_mean + score_mean
+            stdev = center_stdev + size_stdev + rotation_stdev + score_stdev
+            transformations.append(Normalize(means,stdev))
+        if transformations_dict["center_offset"]:
+            transformations.append(CenterOffset())
+
+        return transformations
 
     def load_model(self):
         print("---Loading model---")
@@ -151,16 +153,16 @@ class SmoothingTrainer():
         model_name = f"{self.model_type}_{self.data_type}_{self.split}"
         
         # save model
-        model_path = os.path.join(save_dir_full, model_name + "_model.pth")
+        model_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_model.pth")
         torch.save(self.trained_model.state_dict(), model_path)
 
         # save losses
-        losses_path = os.path.join(save_dir_full, model_name + "_losses.json")
+        losses_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_losses.json")
         json_object = json.dumps(self.result_dict)
         with open(losses_path, "w") as outfile:
             outfile.write(json_object)
 
-        plot_path = os.path.join(save_dir_full, model_name + "_plot.png")
+        plot_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_plot.png")
         self._plot_results(plot_path)
 
     def _plot_results(self, save_dir):

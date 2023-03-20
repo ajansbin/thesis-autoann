@@ -3,6 +3,7 @@ from torch import nn
 import numpy as np
 from smoother.io.logging_utils import log_batch_stats, log_epoch_stats
 from smoother.models.box_refinement_loss import BoxRefinementLoss
+import tqdm
 
 class TrainingUtils():
 
@@ -28,6 +29,7 @@ class TrainingUtils():
         model.to(self.device)
         train_losses, val_losses = [], []
 
+        #for epoch in tqdm.tqdm()
         for epoch in range(1,n_epochs+1):
             print("Epoch nr", epoch)
             model, train_loss = self._train_epoch(model,
