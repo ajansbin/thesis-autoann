@@ -29,6 +29,7 @@ from .sunrgbd_dataset import SUNRGBDDataset
 from .utils import get_loading_pipeline
 from .waymo_dataset import WaymoDataset
 from .zod_frames import ZodFramesDataset
+from .zod_seq import ZodSequenceDataset
 from .zod_frames_mono import ZodFramesMonoDataset
 
 __all__ = [
@@ -79,5 +80,6 @@ __all__ = [
     'RandomRotate',
     'MultiViewWrapper',
     'ZodFramesDataset',
+    'ZodSequenceDataset',
     'ZodFramesMonoDataset',
 ]

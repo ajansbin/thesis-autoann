@@ -234,9 +234,9 @@ def zod_data_prep(root_path,
         root_path, info_train_path, version=version, sequences=sequences)
     zod_converter.export_2d_annotation(
         root_path, info_val_path, version=version, sequences=sequences)
-    #dataset = 'ZodSequencesDataset' if sequences else 'ZodFramesDataset'
+    dataset = 'ZodSequenceDataset' if sequences else 'ZodFramesDataset'
     GTDatabaseCreater(
-        'ZodFramesDataset',
+        dataset,
         root_path,
         info_prefix,
         f'{out_dir}/{info_prefix}_infos_train.pkl',

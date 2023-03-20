@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/zod-frames-3d.py',
+    '../_base_/datasets/zod-seq-3d.py',
     '../_base_/models/centerpoint_02pillar_second_secfpn_zod.py',
     '../_base_/schedules/cyclic_20e.py',
     '../_base_/default_runtime.py',
@@ -19,8 +19,8 @@ model = dict(
     train_cfg=dict(pts=dict(point_cloud_range=point_cloud_range)),
     test_cfg=dict(pts=dict(pc_range=point_cloud_range[:2])))
 
-dataset_type = 'ZodFramesDataset'
-#dataset_type = 'ZodSequencesDataset'
+#dataset_type = 'ZodFramesDataset'
+dataset_type = 'ZodSequenceDataset'
 data_root = 'data/zod/'
 file_client_args = dict(backend='disk')
 
@@ -161,20 +161,20 @@ data = dict(
         times=400,
         dataset=dict(
             #ann_file=data_root + 'mmdet3d/zod-mini_infos_train.pkl',
-            ann_file='storage/detections/zod_seq_mini_v2/zod-seq-mini_infos_train.pkl',
+            ann_file='storage/detections/zod_seq_mini/zod-seq-mini_infos_train.pkl',
             pipeline=train_pipeline,
             classes=class_names)),
     val=dict(
         pipeline=test_pipeline,
         classes=class_names,
         #ann_file=data_root + 'mmdet3d/zod-mini_infos_val.pkl'),
-        ann_file='storage/detections/zod_seq_mini_v2/zod-seq-mini_infos_val.pkl',
+        ann_file='storage/detections/zod_seq_mini/zod-seq-mini_infos_val.pkl',
     ),
     test=dict(
         pipeline=test_pipeline,
         classes=class_names,
         #ann_file=data_root + 'mmdet3d/zod-mini_infos_val.pkl'),
-        ann_file='storage/detections/zod_seq_full/zod-seq-full_infos_val.pkl',
+        ann_file='storage/detections/zod_seq_mini/zod-seq-mini_infos_val.pkl',
 ))
 log_config = dict(
     interval=50,
