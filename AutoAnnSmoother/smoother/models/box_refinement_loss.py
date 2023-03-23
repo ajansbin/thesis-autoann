@@ -74,46 +74,45 @@ class BoxRefinementLoss():
         return center_loss + size_loss + rotation_loss + score_loss
     
     def evaluate_model(self, dets, refined_dets, gt_anns):
+        
+        ### CENTER MAE/MSE
         dets_centers = dets[:,:3]
         ref_centers = refined_dets[:,:3]
         gt_centers = gt_anns[:,:3]
 
+        mae_dets_center = F.l1_loss(dets_centers, gt_centers, reduction='sum')
+        mse_dets_center = F.mse_loss(dets_centers, gt_centers, reduction='sum')
 
-        mae_dets_center = F.l1_loss(dets_centers, gt_centers, reduction='mean')
-        mse_dets_center = F.mse_loss(dets_centers, gt_centers, reduction='mean')
+        mae_refinement_center = F.l1_loss(ref_centers, gt_centers, reduction='sum')
+        mse_refinement_center = F.mse_loss(ref_centers, gt_centers, reduction='sum')
 
-        mae_refinement_center = F.l1_loss(ref_centers, gt_centers, reduction='mean')
-        mse_refinement_center = F.mse_loss(ref_center_losses, gt_centers, reduction='mean')
-
-        dets_center_losses = F.l1_loss(dets_centers,gt_centers, reduction='none')
-        ref_center_losses = F.l1_loss(ref_centers,gt_centers, reduction='none')
-
+        ### SIZE MAE/MSE
         dets_sizes = dets[:,3:6]
         ref_sizes = refined_dets[:,3:6]
         gt_sizes = gt_anns[:,3:6]
-        dets_size_losses = F.l1_loss(dets_sizes,gt_sizes, reduction='none')
-        ref_size_losses = F.l1_loss(ref_sizes,gt_sizes, reduction='none')
 
+        mae_dets_size = F.l1_loss(dets_sizes, gt_sizes, reduction='sum')
+        mse_dets_size = F.mse_loss(dets_sizes, gt_sizes, reduction='sum')
+
+        mae_refinement_size = F.l1_loss(ref_sizes, gt_sizes, reduction='sum')
+        mse_refinement_size = F.mse_loss(ref_sizes, gt_sizes, reduction='sum')
+
+        ### ROTATION MAE/MSE
         dets_rotations = dets[:,6:10]
         ref_rotations = refined_dets[:,6:10]
         gt_rotations = gt_anns[:,6:10]
-        dets_rotation_losses = F.l1_loss(dets_rotations,gt_rotations, reduction='none')
-        ref_rotation_losses = F.l1_loss(ref_rotations,gt_rotations, reduction='none')
 
-        n_centers = dets[:,:3].numel()
-        n_sizes = dets[:,3:6].numel()
-        n_rotations = dets[:,6:10].numel()
-        n_centers_improvements = (ref_center_losses < dets_center_losses).count_nonzero()
+        mae_dets_rotation = F.l1_loss(dets_rotations, gt_rotations, reduction='sum')
+        mse_dets_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='sum')
 
-        n_sizes_improvements = (ref_size_losses < dets_size_losses).count_nonzero()                
-        n_rotations_improvements = (ref_rotation_losses < dets_rotation_losses).count_nonzero()
-
-        prop_center_imp = n_centers_improvements / n_centers
-        prop_size_imp = n_sizes_improvements / n_sizes
-        prop_rotation_imp = n_rotations_improvements / n_rotations
+        mae_refinement_rotation = F.l1_loss(ref_rotations, gt_rotations, reduction='sum')
+        mse_refinement_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='sum')
 
         return {
-            "center_imp": prop_center_imp,
-            "size_imp": prop_size_imp,
-            "rotation_imp": prop_rotation_imp
+            "rmse_dets_center": mse_dets_center,
+            "rmse_refinement_center": mse_refinement_center,
+            "rmse_dets_size":mse_dets_size,
+            "rmse_refinement_size":mse_refinement_size,
+            "rmse_dets_rotation":mse_dets_rotation,
+            "rmse_refinement_rotation":mse_refinement_rotation
         }

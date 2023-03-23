@@ -46,7 +46,8 @@ class TrackingData():
         track_data = []
         for i in range(self.max_track_length):
             if i < track_start_index or i > track_end_index:
-                track_data.append([0]*11)
+                pad_data = [0]*10 + [i-track.foi_index]
+                track_data.append(pad_data)
             else:
                 box = track[i-track_start_index]
                 temporal_encoding = [box.frame_index - track.foi_index]
@@ -54,7 +55,7 @@ class TrackingData():
 
         for i, transformation in enumerate(self.transformations):
             if i == self.center_offset_index:
-                foi_data = track_data[foi_data_index]
+                foi_data = track_data[track.foi_index]
                 transformation.set_offset(foi_data)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
@@ -69,6 +70,10 @@ class TrackingData():
         gt_data[10] = np.exp(-self.score_dist_temp*new_dist)
 
         return track_data, gt_data
+    
+    # returs the track object. Useful for retrieving information about the track.
+    def get(self, track_index):
+        return self.data_samples[track_index]
     
     def get_foi_index(self, track_index):
         track = self.data_samples[track_index]
@@ -140,6 +145,9 @@ class WindowTrackingData():
 
         return wind_track_data, gt_data
     
+    def get(self, track_index):
+        return self.tracking_data.get(track_index)
+    
 
 class SlidingWindowTrackingData():
 
@@ -170,6 +178,10 @@ class SlidingWindowTrackingData():
             wind_track_nusc = WindowTrackingData(self.tracking_results,start_ind, end_ind, self.transformations, self.tracking_data)
             for track, track_gt in wind_track_nusc:
                 yield track, track_gt
+
+    def get(self, sliding_track_index):
+        track_index = sliding_track_index % self.window_size
+        return self.tracking_data.get(track_index)
 
         
 

@@ -7,12 +7,14 @@ import tqdm
 
 class TrainingUtils():
 
-    def __init__(self, conf, model_type:str, log_out:str):
+    def __init__(self, conf, model_type:str, log_out:str, data_model):
         self.conf = conf
         self.model_type = model_type
         self.log_out = log_out
         self.out_size = conf["model"][model_type]["out_size"]
         self.loss_params = conf["loss"]
+        self.data_model = data_model
+
 
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                         else "cpu")
@@ -37,7 +39,7 @@ class TrainingUtils():
                                             train_loader,
                                             epoch)
             print("Epoch training finished! Starting validation")
-            val_loss, improvements = self._validate(model, val_loader)
+            val_loss, metrics = self._validate(model, val_loader)
 
             log_train_loss = round(sum(train_loss)/len(train_loader),3)
             log_val_loss = round(val_loss/len(val_loader), 3)
@@ -49,7 +51,7 @@ class TrainingUtils():
             val_losses.append(val_loss)
 
             losses = {"train_loss": log_train_loss, "val_loss": log_val_loss}
-            log_epoch_stats(losses, improvements, epoch, mode='TRAIN', log_out=self.log_out)
+            log_epoch_stats(losses, metrics, epoch, mode='TRAIN', log_out=self.log_out)
         return model, train_losses, val_losses
 
     def _train_epoch(self, model, optimizer, train_loader, epoch):
@@ -68,8 +70,8 @@ class TrainingUtils():
             optimizer.step()
             train_loss_batches.append(loss.item())
 
-            if batch_index % 50 == 0:
-                log_batch_stats(loss,None,epoch, batch_index, num_batches, 'TRAIN', self.log_out)
+            #if batch_index % 50 == 0:
+            #    log_batch_stats(loss,None,epoch, batch_index, num_batches, 'train', self.log_out)
             
         return model, train_loss_batches
 
@@ -77,20 +79,27 @@ class TrainingUtils():
         val_loss_cum = 0
         val_acc_cum = 0
         model.eval()
+        val_metrics = {}
         with torch.no_grad():
             for batch_index, (x, y) in enumerate(val_loader, 1):
                 tracks, gt_anns = x.to(self.device), y.to(self.device)
                 model_output = model.forward(tracks)
                 loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
                 val_loss_cum += loss.item()
-                #foi_index = self._find_foi_index(tracks)
-                #foi_dets = tracks[:,foi_index]
-                #improvements = self.brl.evaluate_model(foi_dets.view(-1, self.out_size),model_output.view(-1, self.out_size),gt_anns.float())
-                improvements = None
 
-        return val_loss_cum, improvements
+                foi_indexes = self._find_foi_indexes(tracks)
+                foi_dets = tracks[torch.arange(tracks.shape[0]),foi_indexes,:]
+                n_batch_samples = foi_dets.shape[0]
+                metrics = self.brl.evaluate_model(foi_dets.view(-1, self.out_size),model_output.view(-1, self.out_size),gt_anns.float())
+                for metric, sos in metrics.items():
+                    val_metrics[metric] = val_metrics.get(metric,0) + sos
+            
+            for metric, sos in metrics.items():
+                val_metrics[metric] = (val_metrics[metric]/len(val_loader.dataset))**(1/2)
+
+        return val_loss_cum, val_metrics
     
-    def _find_foi_index(self, tracks):
-        indices = (tracks[:,:,10] == 0).nonzero()
-        rows_of_10 = indices[:, 1]
-        return rows_of_10[0].item()
+    def _find_foi_indexes(self, tracks):
+        is_foi = tracks[:,:,-1] == 0
+        foi_index = is_foi.nonzero()
+        return foi_index[:,-1]

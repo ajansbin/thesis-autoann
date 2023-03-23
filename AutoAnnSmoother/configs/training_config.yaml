@@ -21,7 +21,7 @@ data:
   split: val
   feature_dim: 11 #same as input_dim for the model
   foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
-  window_size: 5
+  window_size: 25
   sliding_window: true
   gt_dim: 11
   gt_assoc_threshold:  10
@@ -46,12 +46,12 @@ data:
 
 ### Training Specific ###
 train:
-  learning_rate: 3.0E-5
+  learning_rate: 3.0E-4
   weight_decay: 1.0E-5
   train_size: 0.8
   batch_size: 100
   n_workers: 4
-  n_epochs: 5
+  n_epochs: 10
   seed: 0
 
 loss:

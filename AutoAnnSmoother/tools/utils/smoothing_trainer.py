@@ -118,10 +118,7 @@ class SmoothingTrainer():
         print("---Starting training---")
 
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr,  weight_decay=self.wd)
-        tu = TrainingUtils(self.conf, self.model_type, self.log_out)
-
-
-        loss_fn = tu.brl
+        tu = TrainingUtils(self.conf, self.model_type, self.log_out, self.data_model)
 
         torch.manual_seed(self.seed)
         size = len(self.data_model)
