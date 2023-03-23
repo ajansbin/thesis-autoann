@@ -8,6 +8,9 @@ class Transformation():
     
     def set_offset(self, x):
         pass
+
+    def untransform(self, x):
+        return x
     
 class ToTensor(Transformation):
 
@@ -16,7 +19,6 @@ class ToTensor(Transformation):
 
     def transform(self, x) -> torch.tensor:
         return torch.tensor(x,dtype=torch.float32)
-    
 
 class Normalize(Transformation):
 
@@ -33,10 +35,18 @@ class Normalize(Transformation):
         else:
             x = (x-self.means)/self.stds
         return x
+
+    def untransform(self,x:torch.tensor) -> torch.tensor:
+        if len(x.shape) > 1:
+             x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]*self.stds)+self.means
+        else:
+            x = (x*self.stds + self.means)
+        return x
     
     def set_start_and_end_index(self,start_index,end_index):
         self.start_index = start_index
         self.end_index = end_index
+
 
 class CenterOffset(Transformation):
 
@@ -51,6 +61,13 @@ class CenterOffset(Transformation):
             x[self.start_index:self.end_index,0:3] = x[self.start_index:self.end_index,0:3] - self.offset        
         else:
             x[0:3] = x[0:3] - self.offset
+        return x
+    
+    def untransform(self,x:torch.tensor) -> torch.tensor:
+        if len(x.shape) > 1:
+            x[self.start_index:self.end_index,0:3] = x[self.start_index:self.end_index,0:3] + self.offset        
+        else:
+            x[0:3] = x[0:3] + self.offset
         return x
     
     def set_offset(self, x:list):

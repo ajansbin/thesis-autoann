@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import torch
 import copy
 from typing import Any, Dict, Optional
+from tools.utils.evaluation import giou3d,calculate_giou3d_matrix, l2
+
 
 @dataclass
 class TrackingBox():
@@ -34,10 +36,12 @@ class TrackingBox():
 
 class Tracklet():
 
-    def __init__(self, sequence_id, tracking_id, starting_frame_index):
+    def __init__(self, sequence_id, tracking_id, starting_frame_index, assoc_metric, assoc_thres):
         self.sequence_id = sequence_id
         self.tracking_id = tracking_id
         self.starting_frame_index = starting_frame_index
+        self.assoc_metric = assoc_metric
+        self.assoc_thres = assoc_thres
 
         self.boxes = []
         self.n_samples = 1
@@ -45,6 +49,8 @@ class Tracklet():
         self.foi_index = None
         self.has_gt = False
         self.gt_box = None
+
+        self.offset = None
 
     def __len__(self):
         return len(self.boxes)
@@ -70,20 +76,20 @@ class Tracklet():
         if len(gt_boxes) == 0:
             return
         
-        dists = l2(gt_boxes, foi_box)
-        
-        gt_idx = np.argmin(dists)
+        if self.assoc_metric == 'l2':
+            dists = l2(gt_boxes, foi_box)
+            gt_idx = np.argmin(dists)
+            valid_match = dists[gt_idx] <= self.assoc_thres
+        elif self.assoc_metric == 'giou':
+            dists = calculate_giou3d_matrix(gt_boxes, foi_box)
+            gt_idx = np.argmax(dists)
+            valid_match = dists[gt_idx] >= self.assoc_thres
 
         closest_gt = copy.deepcopy(gt_boxes[gt_idx])
-        closest_gt["distance"] = dists[gt_idx]
-        valid_match = dists[gt_idx] <= 10 
+
         if valid_match:
             self.has_gt = True
             self.gt_box = closest_gt
-
-def l2(gt_boxes, pred_box):
-    gt_centers = [gt_box["translation"] for gt_box in gt_boxes]
-    pred_center = pred_box.center
-    diff = torch.tensor(gt_centers, dtype=torch.float32) - torch.tensor(pred_center, dtype=torch.float32)
-    dists = torch.norm(diff, dim=1)
-    return dists
+    
+    def set_offset(self, offset):
+        self.offset = offset

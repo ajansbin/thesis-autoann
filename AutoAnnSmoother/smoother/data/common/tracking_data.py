@@ -13,8 +13,15 @@ class TrackingData():
         self.tracking_results = tracking_results
         self.transformations = transformations
         self.score_dist_temp = self.tracking_results.score_dist_temp
+
+        self.assoc_metric = self.tracking_results.assoc_metric
+        self.assoc_thres = self.tracking_results.assoc_thres
+
         self.data_samples = list(self._get_data_samples())
         self.max_track_length = 180
+
+        #self.center_offset_index = None
+        #self.normalize_index = None
 
         # set center_offset_transformation index for later look-up
         for i, transformations in enumerate(self.transformations):
@@ -22,7 +29,6 @@ class TrackingData():
                 self.center_offset_index = i
             if type(transformations) == Normalize:
                 self.normalize_index = i
-
 
     def __len__(self):
         return len(self.data_samples)
@@ -57,6 +63,7 @@ class TrackingData():
             if i == self.center_offset_index:
                 foi_data = track_data[track.foi_index]
                 transformation.set_offset(foi_data)
+                track.set_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
@@ -70,6 +77,10 @@ class TrackingData():
         gt_data[10] = np.exp(-self.score_dist_temp*new_dist)
 
         return track_data, gt_data
+
+        # returs the track object. Useful for retrieving information about the track.
+    def get(self, track_index):
+        return self.data_samples[track_index]
     
     # returs the track object. Useful for retrieving information about the track.
     def get(self, track_index):
@@ -106,7 +117,7 @@ class TrackingData():
 
                     if tracking_id not in track_ids:
                         #foi_index = tracking_box.frame_index if tracking_box.is_foi else None
-                        track_ids[tracking_id] = Tracklet(sequence_token, tracking_id, frame_index)
+                        track_ids[tracking_id] = Tracklet(sequence_token, tracking_id, frame_index, self.assoc_metric, self.assoc_thres)
                     track_ids[tracking_id].add_box(tracking_box)
 
             # remove tracking_id which do not include FoI

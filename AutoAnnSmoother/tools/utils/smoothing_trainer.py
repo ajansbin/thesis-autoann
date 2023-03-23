@@ -22,8 +22,8 @@ class SmoothingTrainer():
 
         self.conf = self._get_config(self.conf_path)
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
-        self.data_version = self.conf["data"]["version"]
-        self.split = self.conf["data"]["split"]
+        self.data_version = self.conf["train"]["data"]["version"]
+        self.split = self.conf["train"]["data"]["split"]
         self.foi_index = self.conf["data"]["foi_index"] # index in sequence where annotation exist
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
@@ -112,7 +112,6 @@ class SmoothingTrainer():
             mlp_sizes = self.conf["model"][self.model_type]["mlp_sizes"]
             num_heads = self.conf["model"][self.model_type]["num_heads"]
             self.model = PointTransformer(input_dim, out_size, mlp1_sizes, num_heads)
-           
 
     def train(self):
         print("---Starting training---")

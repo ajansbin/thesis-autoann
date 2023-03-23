@@ -32,13 +32,15 @@ class ZodTrackingResults(TrackingResults):
         print("Initializing ZodData class...")
         super(ZodTrackingResults, self).__init__(tracking_results_path, config, version, split, data_path)
         assert os.path.exists(tracking_results_path), 'Error: The result file does not exist!'
-
         assert version in ['full', 'mini'] 
         self.zod = ZodSequences(data_path, version) if not zod else zod
 
+        self.assoc_metric = config["data"]["association_metric"]
+        self.assoc_thres = config["data"]["association_thresholds"][self.assoc_metric]
+
+
         assert split in ['train', 'val']
         self.seq_tokens = self.zod.get_split(split)
-
         # Store the FoI-indexes
         self.foi_indexes = {}
         for seq_token in self.seq_tokens:
