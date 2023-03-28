@@ -1,7 +1,7 @@
 import tqdm
 from collections import defaultdict
 from smoother.data.common.dataclasses import TrackingBox, Tracklet
-from smoother.data.common.transformations import Transformation
+from smoother.data.common.transformations import Transformation, ToTensor
 import torch
 import numpy as np
 from smoother.data.common.transformations import CenterOffset, Normalize
@@ -35,6 +35,7 @@ class TrackingData():
 
     def __getitem__(self, index):
         track = self.data_samples[index]
+        torch.set_printoptions(threshold=10000)
         foi_data_index = track.foi_index-track.starting_frame_index
         if track.has_gt:
             gt_box = track.gt_box
@@ -48,10 +49,10 @@ class TrackingData():
 
 
         track_start_index = track.starting_frame_index
-        track_end_index = track.starting_frame_index + len(track)-1
+        track_end_index = track.starting_frame_index + len(track)
         track_data = []
         for i in range(self.max_track_length):
-            if i < track_start_index or i > track_end_index:
+            if i < track_start_index or i >= track_end_index:
                 pad_data = [0]*10 + [i-track.foi_index]
                 track_data.append(pad_data)
             else:
@@ -68,19 +69,17 @@ class TrackingData():
             elif i == self.normalize_index:
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             track_data = transformation.transform(track_data)
-            gt_data = transformation.transform(gt_data)
+            if track.has_gt or type(transformation) == ToTensor:
+                gt_data = transformation.transform(gt_data)
 
         # update target confidence after transformations
-        foi_center = track_data[foi_data_index,0:3]
-        gt_center = gt_data[0:3]
-        new_dist = torch.norm(gt_center-foi_center)
-        gt_data[10] = np.exp(-self.score_dist_temp*new_dist)
+        if track.has_gt:
+            foi_center = track_data[foi_data_index,0:3]
+            gt_center = gt_data[0:3]
+            new_dist = torch.norm(gt_center-foi_center)
+            gt_data[10] = np.exp(-self.score_dist_temp*new_dist)
 
         return track_data, gt_data
-
-        # returs the track object. Useful for retrieving information about the track.
-    def get(self, track_index):
-        return self.data_samples[track_index]
     
     # returs the track object. Useful for retrieving information about the track.
     def get(self, track_index):

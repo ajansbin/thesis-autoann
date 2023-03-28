@@ -1,4 +1,4 @@
-from .common.sequence_data import TrackingResults
+from .common.tracking_results import TrackingResults
 import os
 from zod import ZodSequences
 from zod.constants import Lidar

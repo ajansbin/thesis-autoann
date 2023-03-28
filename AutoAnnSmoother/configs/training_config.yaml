@@ -21,10 +21,10 @@ data:
   split: val
   feature_dim: 11 #same as input_dim for the model
   foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
-  window_size: 25
+  window_size: 15
   sliding_window: true
   gt_dim: 11 # same as out_dim for the model
-  association_metric: l2 #[giou, l2]
+  association_metric: giou #[giou, l2]
   association_thresholds:
     giou: -0.5
     l2: 10
@@ -53,12 +53,12 @@ train:
   data:
     version: full
     split: val 
-  learning_rate: 1.0E-5
+  learning_rate: 1.0E-4
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 16
+  batch_size: 100
   n_workers: 1
-  n_epochs: 2
+  n_epochs: 5
   seed: 0
 
 test:

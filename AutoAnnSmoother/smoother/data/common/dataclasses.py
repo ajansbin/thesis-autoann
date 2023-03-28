@@ -32,6 +32,15 @@ class TrackingBox():
             center_offset = None
         )
 
+    def to_dict(self):
+        return {"tracking_id": self.tracking_id,
+                "center": self.center,
+                "size": self.size,
+                "rotation": self.rotation,
+                "is_foi": self.is_foi,
+                "frame_index":self.frame_index,
+                "tracking_name":self.tracking_name,
+                "center_offset": self.center_offset}
         
 
 class Tracklet():
@@ -44,13 +53,24 @@ class Tracklet():
         self.assoc_thres = assoc_thres
 
         self.boxes = []
-        self.n_samples = 1
 
         self.foi_index = None
         self.has_gt = False
         self.gt_box = None
+        self.gt_dist = None
 
         self.offset = None
+
+    def __repr__(self) -> str:
+        return str({"sequence_id": self.sequence_id, 
+                    "tracking_id":self.tracking_id, 
+                    "starting_frame_index":self.starting_frame_index,
+                    "track_length":self.__len__(),
+                    "foi_index": self.foi_index,
+                    "assoc_metric":self.assoc_metric,
+                    "assoc_thresh":self.assoc_thres,
+                    "has_gt":self.has_gt,
+                    "gt_dist":self.gt_dist})
 
     def __len__(self):
         return len(self.boxes)
@@ -78,11 +98,13 @@ class Tracklet():
         
         if self.assoc_metric == 'l2':
             dists = l2(gt_boxes, foi_box)
-            gt_idx = np.argmin(dists)
+            gt_idx = torch.argmin(dists)
+            gt_dist = torch.min(dists)
             valid_match = dists[gt_idx] <= self.assoc_thres
         elif self.assoc_metric == 'giou':
-            dists = calculate_giou3d_matrix(gt_boxes, foi_box)
-            gt_idx = np.argmax(dists)
+            dists = torch.from_numpy(calculate_giou3d_matrix(gt_boxes, foi_box))
+            gt_idx = torch.argmax(dists)
+            gt_dist = torch.max(dists)
             valid_match = dists[gt_idx] >= self.assoc_thres
 
         closest_gt = copy.deepcopy(gt_boxes[gt_idx])
@@ -90,6 +112,7 @@ class Tracklet():
         if valid_match:
             self.has_gt = True
             self.gt_box = closest_gt
+            self.gt_dist = gt_dist
     
     def set_offset(self, offset):
         self.offset = offset

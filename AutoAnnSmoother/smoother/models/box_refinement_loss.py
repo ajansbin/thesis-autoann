@@ -1,5 +1,6 @@
 from torch import nn
 from torch.nn import functional as F
+import torch
 
 class BoxRefinementLoss():
 
@@ -74,39 +75,37 @@ class BoxRefinementLoss():
         return center_loss + size_loss + rotation_loss + score_loss
     
     def evaluate_model(self, dets, refined_dets, gt_anns):
-        
-        ### CENTER MAE/MSE
-        dets_centers = dets[:,:3]
-        ref_centers = refined_dets[:,:3]
-        gt_centers = gt_anns[:,:3]
 
-        mae_dets_center = F.l1_loss(dets_centers, gt_centers, reduction='sum')
-        mse_dets_center = F.mse_loss(dets_centers, gt_centers, reduction='sum')
+        #Only compute MSE for detection with ground-truth associations
+        non_zero_gt_indices = torch.nonzero(torch.sum(gt_anns, dim=1), as_tuple=True)[0]
+        n_non_zero = len(non_zero_gt_indices)
 
-        mae_refinement_center = F.l1_loss(ref_centers, gt_centers, reduction='sum')
-        mse_refinement_center = F.mse_loss(ref_centers, gt_centers, reduction='sum')
+        ### CENTER MSE
+        dets_centers = dets[non_zero_gt_indices,:3]
+        ref_centers = refined_dets[non_zero_gt_indices,:3]
+        gt_centers = gt_anns[non_zero_gt_indices,:3]
 
-        ### SIZE MAE/MSE
-        dets_sizes = dets[:,3:6]
-        ref_sizes = refined_dets[:,3:6]
-        gt_sizes = gt_anns[:,3:6]
+        mse_dets_center = F.mse_loss(dets_centers, gt_centers, reduction='none').sum(-1)
 
-        mae_dets_size = F.l1_loss(dets_sizes, gt_sizes, reduction='sum')
-        mse_dets_size = F.mse_loss(dets_sizes, gt_sizes, reduction='sum')
+        mse_refinement_center = F.mse_loss(ref_centers, gt_centers, reduction='none').sum(-1)
 
-        mae_refinement_size = F.l1_loss(ref_sizes, gt_sizes, reduction='sum')
-        mse_refinement_size = F.mse_loss(ref_sizes, gt_sizes, reduction='sum')
+        ### SIZE MSE
+        dets_sizes = dets[non_zero_gt_indices,3:6]
+        ref_sizes = refined_dets[non_zero_gt_indices,3:6]
+        gt_sizes = gt_anns[non_zero_gt_indices,3:6]
 
-        ### ROTATION MAE/MSE
-        dets_rotations = dets[:,6:10]
-        ref_rotations = refined_dets[:,6:10]
-        gt_rotations = gt_anns[:,6:10]
+        mse_dets_size = F.mse_loss(dets_sizes, gt_sizes, reduction='none').sum(-1)
 
-        mae_dets_rotation = F.l1_loss(dets_rotations, gt_rotations, reduction='sum')
-        mse_dets_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='sum')
+        mse_refinement_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none').sum(-1)
 
-        mae_refinement_rotation = F.l1_loss(ref_rotations, gt_rotations, reduction='sum')
-        mse_refinement_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='sum')
+        ### ROTATION MSE
+        dets_rotations = dets[non_zero_gt_indices,6:10]
+        ref_rotations = refined_dets[non_zero_gt_indices,6:10]
+        gt_rotations = gt_anns[non_zero_gt_indices,6:10]
+
+        mse_dets_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='none').sum(-1)
+
+        mse_refinement_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='none').sum(-1)
 
         return {
             "rmse_dets_center": mse_dets_center,
@@ -115,4 +114,6 @@ class BoxRefinementLoss():
             "rmse_refinement_size":mse_refinement_size,
             "rmse_dets_rotation":mse_dets_rotation,
             "rmse_refinement_rotation":mse_refinement_rotation
-        }
+        }, n_non_zero
+    
+

@@ -7,13 +7,12 @@ import tqdm
 
 class TrainingUtils():
 
-    def __init__(self, conf, model_type:str, log_out:str, data_model):
+    def __init__(self, conf, model_type:str, log_out:str):
         self.conf = conf
         self.model_type = model_type
         self.log_out = log_out
         self.out_size = conf["model"][model_type]["out_size"]
         self.loss_params = conf["loss"]
-        self.data_model = data_model
 
 
         self.device = torch.device("cuda" if torch.cuda.is_available() 
@@ -62,8 +61,7 @@ class TrainingUtils():
         for batch_index, (x, y) in enumerate(train_loader, 1):
             tracks, gt_anns = x.to(self.device), y.to(self.device)
             optimizer.zero_grad()
-            model_output = model.forward(tracks)
-
+            model_output = model.forward(tracks.clone())
             loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
 
             loss.backward()
@@ -80,22 +78,25 @@ class TrainingUtils():
         val_acc_cum = 0
         model.eval()
         val_metrics = {}
+        total_samples = 0
+
         with torch.no_grad():
             for batch_index, (x, y) in enumerate(val_loader, 1):
                 tracks, gt_anns = x.to(self.device), y.to(self.device)
-                model_output = model.forward(tracks)
-                loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
+                model_output = model.forward(tracks.clone())
+                loss = self.loss_fn(model_output.view(-1, self.out_size), gt_anns.float())
                 val_loss_cum += loss.item()
+                torch.set_printoptions(threshold=10000)
 
                 foi_indexes = self._find_foi_indexes(tracks)
-                foi_dets = tracks[torch.arange(tracks.shape[0]),foi_indexes,:]
-                n_batch_samples = foi_dets.shape[0]
-                metrics = self.brl.evaluate_model(foi_dets.view(-1, self.out_size),model_output.view(-1, self.out_size),gt_anns.float())
+                foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :]
+                
+                metrics, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, self.out_size), model_output.view(-1, self.out_size), gt_anns.float())
+                total_samples += n_non_zero
                 for metric, sos in metrics.items():
-                    val_metrics[metric] = val_metrics.get(metric,0) + sos
-            
-            for metric, sos in metrics.items():
-                val_metrics[metric] = (val_metrics[metric]/len(val_loader.dataset))**(1/2)
+                    val_metrics[metric] = val_metrics.get(metric,0) + sos.sum()
+        for metric, sos in val_metrics.items():
+            val_metrics[metric] = (sos / total_samples) ** (1 / 2)
 
         return val_loss_cum, val_metrics
     
