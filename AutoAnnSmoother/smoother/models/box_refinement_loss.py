@@ -73,7 +73,7 @@ class BoxRefinementLoss():
         score_loss *= self.loss_weights["score"]
         l = center_loss + size_loss + rotation_loss + score_loss
         return center_loss + size_loss + rotation_loss + score_loss
-    
+        
     def evaluate_model(self, dets, refined_dets, gt_anns):
 
         #Only compute MSE for detection with ground-truth associations
@@ -85,35 +85,45 @@ class BoxRefinementLoss():
         ref_centers = refined_dets[non_zero_gt_indices,:3]
         gt_centers = gt_anns[non_zero_gt_indices,:3]
 
-        mse_dets_center = F.mse_loss(dets_centers, gt_centers, reduction='none').sum(-1)
+        sos_det_center = F.mse_loss(dets_centers, gt_centers, reduction='none')
+        sos_ref_center = F.mse_loss(ref_centers, gt_centers, reduction='none')
 
-        mse_refinement_center = F.mse_loss(ref_centers, gt_centers, reduction='none').sum(-1)
+        sos_det_x = sos_det_center[:,0]
+        sos_det_y = sos_det_center[:,1]
+        sos_det_z = sos_det_center[:,2]
+        sos_ref_x = sos_ref_center[:,0]
+        sos_ref_y = sos_ref_center[:,1]
+        sos_ref_z = sos_ref_center[:,2]
 
         ### SIZE MSE
         dets_sizes = dets[non_zero_gt_indices,3:6]
         ref_sizes = refined_dets[non_zero_gt_indices,3:6]
         gt_sizes = gt_anns[non_zero_gt_indices,3:6]
 
-        mse_dets_size = F.mse_loss(dets_sizes, gt_sizes, reduction='none').sum(-1)
-
-        mse_refinement_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none').sum(-1)
+        sos_det_size = F.mse_loss(dets_sizes, gt_sizes, reduction='none')
+        sos_ref_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none')
 
         ### ROTATION MSE
         dets_rotations = dets[non_zero_gt_indices,6:10]
         ref_rotations = refined_dets[non_zero_gt_indices,6:10]
         gt_rotations = gt_anns[non_zero_gt_indices,6:10]
 
-        mse_dets_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='none').sum(-1)
-
-        mse_refinement_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='none').sum(-1)
+        sos_det_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='none')
+        sos_ref_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='none')
 
         return {
-            "rmse_dets_center": mse_dets_center,
-            "rmse_refinement_center": mse_refinement_center,
-            "rmse_dets_size":mse_dets_size,
-            "rmse_refinement_size":mse_refinement_size,
-            "rmse_dets_rotation":mse_dets_rotation,
-            "rmse_refinement_rotation":mse_refinement_rotation
+            "rmse_dets_center": sos_det_center.sum(-1),
+            "rmse_refinement_center": sos_ref_center.sum(-1),
+            "rmse_dets_size":sos_det_size.sum(-1),
+            "rmse_refinement_size":sos_ref_size.sum(-1),
+            "rmse_dets_rotation":sos_det_rotation.sum(-1),
+            "rmse_refinement_rotation":sos_ref_rotation.sum(-1),
+            "rmse_det_x":sos_det_x,
+            "rmse_det_y":sos_det_y,
+            "rmse_det_z":sos_det_z,
+            "rmse_ref_x":sos_ref_x,
+            "rmse_ref_y":sos_ref_y,
+            "rmse_ref_z":sos_ref_z
         }, n_non_zero
     
 

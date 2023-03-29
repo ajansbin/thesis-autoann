@@ -21,13 +21,14 @@ data:
   split: val
   feature_dim: 11 #same as input_dim for the model
   foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
-  window_size: 15
-  sliding_window: true
+  window_size: 5
+  sliding_window: false
   gt_dim: 11 # same as out_dim for the model
   association_metric: giou #[giou, l2]
   association_thresholds:
     giou: -0.5
-    l2: 10
+    l2: 2
+  remove_bottom_center: true # if increases the z dimension by half the height for the detections
 
   score_dist_temp: 1
   transformations:
@@ -58,7 +59,7 @@ train:
   train_size: 0.8
   batch_size: 100
   n_workers: 1
-  n_epochs: 5
+  n_epochs: 20
   seed: 0
 
 test:
@@ -69,7 +70,7 @@ test:
 loss:
   type: "l1" # one of [l1, iou, giou]
   weight:
-    center: 2
+    center: 1
     size : 1
     rotation: 1
     score: 1

@@ -16,6 +16,8 @@ class TrackingResults():
         self.assoc_metric = self.config["data"]["association_metric"]
         self.gt_assoc_threshold = self.config["data"]["association_thresholds"][self.assoc_metric]
 
+        self.remove_bottom_center = self.config["data"]["remove_bottom_center"]
+
         self.score_dist_temp = self.config["data"]["score_dist_temp"]
 
     def load_tracking_predictions(self, tracking_results_path):

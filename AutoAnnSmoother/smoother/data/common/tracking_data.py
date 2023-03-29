@@ -17,11 +17,10 @@ class TrackingData():
         self.assoc_metric = self.tracking_results.assoc_metric
         self.assoc_thres = self.tracking_results.assoc_thres
 
+        self.remove_bottom_center = self.tracking_results.remove_bottom_center
+
         self.data_samples = list(self._get_data_samples())
         self.max_track_length = 180
-
-        #self.center_offset_index = None
-        #self.normalize_index = None
 
         # set center_offset_transformation index for later look-up
         for i, transformations in enumerate(self.transformations):
@@ -35,7 +34,6 @@ class TrackingData():
 
     def __getitem__(self, index):
         track = self.data_samples[index]
-        torch.set_printoptions(threshold=10000)
         foi_data_index = track.foi_index-track.starting_frame_index
         if track.has_gt:
             gt_box = track.gt_box
@@ -111,6 +109,9 @@ class TrackingData():
                     box["is_foi"] = self.tracking_results.foi_indexes[sequence_token] == frame_index
                     box["frame_index"] = frame_index
 
+                    if self.remove_bottom_center:
+                        box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
+
                     tracking_box = TrackingBox.from_dict(box)
                     tracking_id = tracking_box.tracking_id
 
@@ -140,7 +141,14 @@ class WindowTrackingData():
         self.tracking_results = tracking_results
         self.window_start = window_start
         self.window_end = window_end
+
+        if not tracking_data:
+            print("Loading data samples")
+
         self.tracking_data = TrackingData(tracking_results, transformations) if not tracking_data else tracking_data
+
+        if not tracking_data:
+            print(f"Finished loading {len(self.tracking_data)} data samples!")
 
     def __len__(self):
         return len(self.tracking_data)
