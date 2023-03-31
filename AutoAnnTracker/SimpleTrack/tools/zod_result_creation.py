@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--name', type=str, default='debug')
-parser.add_argument('--obj_types', default='Vehicle,Pedestrian,VulnerableVehicle')
+parser.add_argument('--obj_types', default='Vehicle')#,Pedestrian,VulnerableVehicle')
 parser.add_argument('--result_folder', type=str, default='../nu_mot_results/')
 parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
 args = parser.parse_args()
@@ -15,7 +15,7 @@ args = parser.parse_args()
 def bbox_array2nuscenes_format(bbox_array):
     translation = bbox_array[:3].tolist()
     size = bbox_array[4:7].tolist()
-    size = [size[1], size[0], size[2]]
+    size = [size[0], size[1], size[2]]
     velocity = [0.0, 0.0]
     score = bbox_array[-1]
 
@@ -41,11 +41,13 @@ def main(name, obj_types, data_folder, result_folder, output_folder):
     for obj_type in obj_types:
         print('CONVERTING {:}'.format(obj_type))
         summary_folder = os.path.join(result_folder, 'summary', obj_type)
-        file_names = sorted(os.listdir(os.path.join(data_folder, 'ego_info')))
+        #file_names = sorted(os.listdir(os.path.join(data_folder, 'ego_info')))
+        file_names = sorted(os.listdir(summary_folder))
         token_info_folder = os.path.join(data_folder, 'token_info')
     
         results = dict()
         pbar = tqdm(total=len(file_names))
+        
         for file_index, file_name in enumerate(file_names):
             segment_name = file_name.split('.')[0]
             token_info = json.load(open(os.path.join(token_info_folder, '{:}.json'.format(segment_name)), 'r'))

@@ -5,7 +5,9 @@
 """
 import os, numpy as np, json
 from pyquaternion import Quaternion
-from nuscenes.utils.data_classes import Box
+#from nuscenes.utils.data_classes import Box
+from zod.data_classes.box import Box3D
+from zod.constants import Lidar, EGO
 from mot_3d.data_protos import BBox
 import mot_3d.utils as utils
 from mot_3d.preprocessing import nms
@@ -28,16 +30,28 @@ def transform_matrix(translation: np.ndarray = np.array([0, 0, 0]),
     return tm
 
 
-def nu_array2mot_bbox(b):
+def zod_array2mot_bbox(b):
+    '''
     nu_box = Box(b[:3], b[3:6], Quaternion(b[6:10]))
     mot_bbox = BBox(
         x=nu_box.center[0], y=nu_box.center[1], z=nu_box.center[2],
         w=nu_box.wlh[0], l=nu_box.wlh[1], h=nu_box.wlh[2],
         o=nu_box.orientation.yaw_pitch_roll[0]
     )
+    '''
+
+    zod_box = Box3D(b[:3],b[3:6], Quaternion(b[6:10]), EGO)
+    mot_bbox = BBox(
+    x=zod_box.center[0], y=zod_box.center[1], z=zod_box.center[2],
+    w=zod_box.size[1], l=zod_box.size[0], h=zod_box.size[2],
+    #w=zod_box.size[0], l=zod_box.size[1], h=zod_box.size[2],
+    o=zod_box.orientation.yaw_pitch_roll[0]
+    )
+
     if len(b) == 11:
         mot_bbox.s = b[-1]
     return mot_bbox
+
 
 
 class ZodLoader:
@@ -60,6 +74,9 @@ class ZodLoader:
         self.dets = np.load(os.path.join(det_data_folder, 'dets', '{:}.npz'.format(segment_name)),
             allow_pickle=True)
         self.det_type_filter = True
+
+        self.nms = configs['data_loader']['nms']
+        self.nms_thres = configs['data_loader']['nms_thres']
         
         self.use_pc = configs['data_loader']['pc']
         if self.use_pc:
@@ -86,7 +103,7 @@ class ZodLoader:
         inst_types = self.dets['types'][self.cur_frame]
         frame_bboxes = [bboxes[i] for i in range(len(bboxes)) if inst_types[i] in self.type_token]
         result['det_types'] = [inst_types[i] for i in range(len(inst_types)) if inst_types[i] in self.type_token]
-        result['dets'] = [nu_array2mot_bbox(b) for b in frame_bboxes]
+        result['dets'] = [zod_array2mot_bbox(b) for b in frame_bboxes]
         result['aux_info'] = dict()
         if 'velos' in list(self.dets.keys()):
             cur_velos = self.dets['velos'][self.cur_frame]
@@ -94,9 +111,9 @@ class ZodLoader:
                 if inst_types[i] in self.type_token]
         else:
             result['aux_info']['velos'] = None
-        
-        result['dets'], result['det_types'], result['aux_info']['velos'] = \
-            self.frame_nms(result['dets'], result['det_types'], result['aux_info']['velos'], 0.1)
+        if self.nms:
+            result['dets'], result['det_types'], result['aux_info']['velos'] = \
+                self.frame_nms(result['dets'], result['det_types'], result['aux_info']['velos'], self.nms_thres)
         result['dets'] = [BBox.bbox2array(d) for d in result['dets']]
 
         result['pc'] = None

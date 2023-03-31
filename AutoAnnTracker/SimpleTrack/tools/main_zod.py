@@ -7,7 +7,9 @@ from mot_3d.mot import MOTModel
 from mot_3d.frame_data import FrameData
 from data_loader import ZodLoader
 from pyquaternion import Quaternion
-from nuscenes.utils.data_classes import Box
+#from nuscenes.utils.data_classes import Box
+from zod.data_classes.box import Box3D
+from zod.constants import Lidar, EGO
 
 
 parser = argparse.ArgumentParser()
@@ -18,7 +20,7 @@ parser.add_argument('--process', type=int, default=1)
 parser.add_argument('--visualize', action='store_true', default=False)
 parser.add_argument('--start_frame', type=int, default=0, help='start at a middle frame for debug')
 #parser.add_argument('--obj_types', default='car,bus,trailer,truck,pedestrian,bicycle,motorcycle')
-parser.add_argument('--obj_types', default='Vehicle,Pedestrian,VulnerableVehicle')
+parser.add_argument('--obj_types', default='Vehicle') #,Pedestrian,VulnerableVehicle')
 # paths
 parser.add_argument('--config_path', type=str, default='configs/config.yaml', help='config file path, follow the path in the documentation')
 parser.add_argument('--result_folder', type=str, default='../nu_mot_results/')
@@ -26,13 +28,22 @@ parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
 args = parser.parse_args()
 
 
-def nu_array2mot_bbox(b):
-    nu_box = Box(b[:3], b[3:6], Quaternion(b[6:10]))
+def zod_array2mot_bbox(b):
+    zod_box = Box3D(b[:3],b[3:6], Quaternion(b[6:10]), EGO)
+
+    #mot_bbox = BBox(
+    #    x=nu_box.center[0], y=nu_box.center[1], z=nu_box.center[2],
+    #    w=nu_box.wlh[0], l=nu_box.wlh[1], h=nu_box.wlh[2],
+    #    o=nu_box.orientation.yaw_pitch_roll[0]
+    #)
+
     mot_bbox = BBox(
-        x=nu_box.center[0], y=nu_box.center[1], z=nu_box.center[2],
-        w=nu_box.wlh[0], l=nu_box.wlh[1], h=nu_box.wlh[2],
-        o=nu_box.orientation.yaw_pitch_roll[0]
+    x=zod_box.center[0], y=zod_box.center[1], z=zod_box.center[2],
+    w=zod_box.size[1], l=zod_box.size[0], h=zod_box.size[2],
+    #w=zod_box.size[0], l=zod_box.size[1], h=zod_box.size[2],
+    o=zod_box.orientation.yaw_pitch_roll[0]
     )
+    
     if len(b) == 11:
         mot_bbox.s = b[-1]
     return mot_bbox
@@ -47,17 +58,17 @@ def load_gt_bboxes(data_folder, type_token, segment_name):
     for _, frame_bboxes in enumerate(bboxes):
         mot_bboxes.append([])
         for _, b in enumerate(frame_bboxes):
-            mot_bboxes[-1].append(BBox.bbox2array(nu_array2mot_bbox(b)))
+            mot_bboxes[-1].append(BBox.bbox2array(zod_array2mot_bbox(b)))
     gt_ids, gt_bboxes = utils.inst_filter(ids, mot_bboxes, inst_types, 
         type_field=type_token, id_trans=True)
     return gt_bboxes, gt_ids
 
 
 def frame_visualization(bboxes, ids, states, gt_bboxes=None, gt_ids=None, pc=None, dets=None, name=''):
+    #if visualizer == None:
     visualizer = visualization.Visualizer2D(name=name, figsize=(12, 12))
     if pc is not None:
         visualizer.handler_pc(pc)
-
     if gt_bboxes is not None:
         for _, bbox in enumerate(gt_bboxes):
             visualizer.handler_box(bbox, message='', color='black')
@@ -67,20 +78,26 @@ def frame_visualization(bboxes, ids, states, gt_bboxes=None, gt_ids=None, pc=Non
     for _, (bbox, id, state_string) in enumerate(zip(bboxes, ids, states)):
         if Validity.valid(state_string):
             visualizer.handler_box(bbox, message='%.2f %s'%(bbox.s, id), color='red')
+            #visualizer.handler_box(bbox, message='', color='red')
         else:
             visualizer.handler_box(bbox, message='%.2f %s'%(bbox.s, id), color='light_blue')
-    visualizer.show()
-    visualizer.close()
+            #visualizer.handler_box(bbox, message='', color='light_blue')
+    #visualizer.show()
+    #visualizer.close()
+    return visualizer
+    
 
 
 def sequence_mot(configs, data_loader, obj_type, sequence_id, gt_bboxes=None, gt_ids=None, visualize=False):
     tracker = MOTModel(configs)
     frame_num = len(data_loader)
     IDs, bboxes, states, types = list(), list(), list(), list()
+    save_folder = '/home/s0001668/workspace/storage/tracking/visualized/SimpleTrack_train_subset'
+    #vis = visualization.Visualizer2D(name='test', figsize=(12, 12))
 
     for frame_index in range(data_loader.cur_frame, frame_num):
-        if frame_index % 10 == 0:
-            print('TYPE {:} SEQ {:} Frame {:} / {:}'.format(obj_type, sequence_id, frame_index + 1, frame_num))
+        #if frame_index % 10 == 0:
+        #    print('TYPE {:} SEQ {:} Frame {:} / {:}'.format(obj_type, sequence_id, frame_index + 1, frame_num))
         
         # input data
         frame_data = next(data_loader)
@@ -96,11 +113,17 @@ def sequence_mot(configs, data_loader, obj_type, sequence_id, gt_bboxes=None, gt
 
         result_pred_states = [trk[2] for trk in results]
         result_types = [trk[3] for trk in results]
-
         # visualization
+        #print('dets=frame_data.dets', gt_bboxes[frame_index])
+        #visualize = True
         if visualize:
-            frame_visualization(result_pred_bboxes, result_pred_ids, result_pred_states,
-                gt_bboxes[frame_index], gt_ids[frame_index], frame_data.pc, dets=frame_data.dets, name='{:}_{:}'.format(args.name, frame_index))
+            vis = frame_visualization(result_pred_bboxes, result_pred_ids, result_pred_states,
+                #gt_bboxes[frame_index], gt_ids[frame_index], frame_data.pc, dets=frame_data.dets, name='{:}_{:}'.format(args.name, frame_index))
+                dets=frame_data.dets, name='{:}_{:}'.format(args.name, frame_index))
+            #vis.next_frame()
+            os.makedirs(os.path.join(save_folder, str(sequence_id)), exist_ok=True)
+
+            vis.save(os.path.join(save_folder, str(sequence_id), str(frame_index) + '.png'))
                     
         # wrap for output
         IDs.append(result_pred_ids)
@@ -109,7 +132,11 @@ def sequence_mot(configs, data_loader, obj_type, sequence_id, gt_bboxes=None, gt
         bboxes.append(result_pred_bboxes)
         states.append(result_pred_states)
         types.append(result_types)
-
+        
+        #if frame_index > 40:
+        #    break
+    #vis.save(os.path.join(save_folder, 'aggregated.png'))
+    
     return IDs, bboxes, states, types
 
 
@@ -122,7 +149,14 @@ def main(name, obj_types, config_path, data_folder, det_data_folder, result_fold
         # load model configs
         configs = yaml.load(open(config_path, 'r'), Loader=yaml.Loader)
     
+        subset = ['000457.npz', '000255.npz', '001127.npz', '001219.npz', '001391.npz', '001257.npz', '001019.npz', '000417.npz']
+        #subset = ['000169', '000807', '000537', '000163', '000121', '001405', '001274', '000686']
         for file_index, file_name in enumerate(file_names[:]):
+            if file_name not in subset:
+                continue
+            else:
+                print
+            
             if file_index % process != token:
                 continue
             print('START TYPE {:} SEQ {:} / {:}'.format(obj_type, file_index + 1, len(file_names)))

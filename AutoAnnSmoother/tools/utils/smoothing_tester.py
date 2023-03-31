@@ -8,6 +8,7 @@ from smoother.models.transformer import PointTransformer
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
+import tqdm
 
 from tools.utils.evaluation import giou3d
 
@@ -123,64 +124,49 @@ class SmoothingTester():
 
         #out_size = self.conf["model"][self.model_type]["out_size"]
         #evaluator = Evaluator(self.conf, self.model_type)
+        transformations = self.data_model.tracking_data.transformations
+
         gious = []
+        gious_o = []
         gious_refined = []
-        count_false_pos = 0
-        count_true_pos = 0
-        improved = 0
-        worse = 0
-        for i, (x, y) in enumerate(self.data_model):
-            tracks, gt = x.to(device), y.to(device)
+        count_f = 0
+        count_s = 0
+        for i, (x, y) in tqdm.tqdm(enumerate(self.data_model)):
+            tracks, gt = x, y
 
             track = self.data_model.get(i)
-            track_start_index = track.starting_frame_index
-            track_end_index = track.starting_frame_index + len(track)-1
-
             has_gt = track.has_gt
+
             foi_box = track.get_foi_box()
             temporal_encoding = 0
-            det = foi_box.center + foi_box.size + foi_box.rotation + [temporal_encoding]
+            foi_box = foi_box.center + foi_box.size + foi_box.rotation + [temporal_encoding]
 
-            #extracting foi after refinement
-            refined_det = self.trained_model(tracks.unsqueeze(0))
-            refined_det = refined_det.squeeze()
-
-            
-            transformations = self.data_model.tracking_data.transformations
-
+            if has_gt:
+                gt_box = list(track.gt_box['translation']) + list(track.gt_box['size']) + list(track.gt_box['rotation'])
+        
             for transformation in transformations:
-                if type(transformation) == ToTensor:
-                    det = transformation.transform(det).to(device)
-            
+                if type(transformation) == ToTensor: 
+                    foi_box = transformation.transform(foi_box)
+
             for transformation in reversed(transformations):
                 if type(transformation) == CenterOffset:
+                    print(track.offset)
                     transformation.set_offset(track.offset)
-                    transformation.set_start_and_end_index(track_start_index, track_end_index)
-                if type(transformation) == Normalize:
-                    transformation.set_start_and_end_index(track_start_index, track_end_index)
                 gt = transformation.untransform(gt)
-                refined_det = transformation.untransform(refined_det)
 
-            #Calculate GIoU for boxes which has an associated GT
+            #print('gt', gt)
+            #print('gt_box', gt_box)
             if has_gt:
-                giou = giou3d(gt.tolist(), det.tolist())
-                gious.append(giou)
-
-                giou_r = giou3d(gt.tolist(), refined_det.tolist())
-                gious_refined.append(giou_r)
-
-                if giou_r < giou:
-                    worse += 1
+                gious.append(giou3d(gt.tolist(), foi_box.tolist()))
+                gious_o.append(giou3d(gt_box, foi_box.tolist()))
+                if gious[-1] < -0.5:
+                    print('error', gious_o[-1])
+                    count_f += 1
                 else:
-                    improved += 1
-               
-                count_true_pos += 1
-            else:
-                count_false_pos += 1
-    
-        print('giou', sum(gious)/len(gious))
-        print('giou refined', sum(gious_refined)/len(gious_refined))
-        print('FP', count_false_pos)
-        print('TP', count_true_pos)
-        print('improved', improved)
-        print('worse', worse)
+                    gious.append(giou3d(gt.tolist(), foi_box.tolist()))
+
+                    count_s +=1
+
+        print('giou', sum(gious)/len(gious))       
+        print('giou_o', sum(gious_o)/len(gious_o))       
+        print(count_f, count_s)

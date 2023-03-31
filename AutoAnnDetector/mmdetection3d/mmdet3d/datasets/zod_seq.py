@@ -458,7 +458,7 @@ class ZodSequenceDataset(Custom3DDataset):
             translation=tuple(box3d[:3]),
             size=tuple(box3d[3:6]),
             rotation=tuple(rot.elements),
-            ego_translation=tuple(box3d[:3]),
+            #ego_translation=tuple(box3d[:3]),
             detection_name=class_name,
             detection_score=float(score),
         )

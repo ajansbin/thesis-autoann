@@ -24,13 +24,19 @@ def main(zod_seq, split, ego_folder):
         
         ego_data = dict()
         
-        for i in range(len(seq.ego_motion.poses)):
-            ego_pose = seq.ego_motion.poses[i]
-            ego_pose = Pose(ego_pose)
+        #for i in range(len(seq.ego_motion.poses)):
+        for i, lidar_frame in enumerate(lidar_frames):
+            #ego_pose = seq.ego_motion.poses[i]
+           
+            core_timestamp = lidar_frame.time.timestamp()
+            ego_pose = seq.ego_motion.get_poses(core_timestamp)
+            ego_data[str(i)] = ego_pose
+
+            #ego_pose = Pose(ego_pose)
             
-            translation = ego_pose.translation 
-            res = np.append(translation, ego_pose.rotation_matrix)
-            ego_data[str(i)] = res
+            #res = np.append(ego_pose.translation, ego_pose.rotation_matrix)
+            #res = np.append(ego_pose.translation, ego_pose.rotation)
+            #ego_data[str(i)] = res
 
         np.savez_compressed(os.path.join(ego_folder, '{:}.npz'.format(scene_name)), **ego_data)
         pbar.update(1)

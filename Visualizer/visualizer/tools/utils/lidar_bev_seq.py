@@ -21,9 +21,11 @@ class BEVBoxAnimation:
         self._settings = BEVSettings()
         # Exclude dark gray color
         self._color = px.colors.qualitative.Dark24[:5] + px.colors.qualitative.Dark24[6:]
-
+        self.track_ids = []
+        #self.track_id_colors = []
+    
     def __call__(
-        self, bev: List[np.ndarray], objects: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]], save_path: str
+        self, bev: List[np.ndarray], objects: List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]], save_path: str, is_tracks
     ) -> go.Figure:
         
         frames = []
@@ -31,7 +33,15 @@ class BEVBoxAnimation:
         for i in range(len(bev)):
             """Go through all objects for each batch, and write them on top the BEV."""
             input_ = create_pointcloud_input(bev[i], self._settings)
-            classes, positions, dimensions, rotations = objects[i]
+            classes, positions, dimensions, rotations, track_ids = objects[i]
+            #self.track_ids = list(np.unique(track_ids))
+            self.is_tracks = is_tracks
+            #self.track_ids = list(track_ids)
+
+            for id in list(track_ids):
+                if id not in self.track_ids:
+                    self.track_ids.append(id)
+
             n_objects = np.shape(positions)[0]
 
             # Setup figure
@@ -40,16 +50,15 @@ class BEVBoxAnimation:
             # Plot the reduced BEV
             input_ = self._create_od_vis_background(input_)
             fig.add_trace(go.Image(z=input_))
-            print('n_objects', n_objects)
 
             # Add object rectangles, if any
             if n_objects > 0:
-                obs = []
                 # Map classes
                 classes = self._settings.encode_classes(classes)
                 # Scale dimensions and positions
                 dimensions = dimensions[:, :2] / self._settings.grid_cell_size
                 positions = (positions[:, :2] - self._settings.grid_min) / self._settings.grid_cell_size
+                
                 for obj_idx in range(n_objects):
                     self._add_object(
                         fig,
@@ -57,10 +66,11 @@ class BEVBoxAnimation:
                         positions[obj_idx],
                         dimensions[obj_idx],
                         rotations[obj_idx],
+                        track_ids[obj_idx],
+                        self.is_tracks
                     )
 
             frames += [PIL.Image.open(io.BytesIO(fig.to_image(format="png")))]
-        print(frames)
         self._save_animation(frames, save_path)
         return fig
 
@@ -164,7 +174,6 @@ class BEVBoxAnimation:
         return fig
 
     def _save_animation(self, frames, save_path):
-        #gif.save(frames, save_path, duration=100)
         frames[0].save(
             save_path,
             save_all=True,
@@ -173,6 +182,7 @@ class BEVBoxAnimation:
             duration=500,
             loop=0,
         )
+
     def _calculate_ticks(
         self, limits: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -198,6 +208,8 @@ class BEVBoxAnimation:
         position: np.ndarray,
         dimension: np.ndarray,
         rotation: np.ndarray,
+        track_id: str,
+        is_tracks:bool
     ):
         # pylint: disable=too-many-arguments
         # Extract object information
@@ -212,27 +224,30 @@ class BEVBoxAnimation:
         all_coords = [rotation.rotate(point)[:2] + position for point in all_coords]
         all_coords = np.vstack([all_coords, all_coords[0]])
 
-        # Add rotated bounding box
-        fig.add_scatter(
-            x=all_coords[:, 0],
-            y=all_coords[:, 1],
-            line=dict(color=self._color[class_ind], width=self._settings.grid_cell_size * 30),
-            marker=dict(size=self._settings.grid_cell_size * 30),
-            legendgroup=self._settings.get_class_name(class_ind),
-            name=self._settings.get_class_name(class_ind),
-            showlegend=False,
-        )
-        '''
-        fig.add_trace(go.Scatter(
-            x=all_coords[:, 0],
-            y=all_coords[:, 1],
-            line=dict(color=self._color[class_ind], width=self._settings.grid_cell_size * 30),
-            marker=dict(size=self._settings.grid_cell_size * 30),
-            legendgroup=self._settings.get_class_name(class_ind),
-            name=self._settings.get_class_name(class_ind),
-            showlegend=False,
-        ))
-        '''
+        if is_tracks:
+            track_idx = self.track_ids.index(track_id)
+            #track_idx = self.track_id_colors.index(track_id)
+            # Add rotated bounding box
+            fig.add_scatter(
+                x=all_coords[:, 0],
+                y=all_coords[:, 1],
+                line=dict(color=self._color[track_idx % len(self._color)], width=self._settings.grid_cell_size * 30),
+                marker=dict(size=self._settings.grid_cell_size * 30),
+                legendgroup=track_id,
+                name=track_id,
+
+                showlegend=False,
+            )
+        else:
+            fig.add_scatter(
+                x=all_coords[:, 0],
+                y=all_coords[:, 1],
+                line=dict(color=self._color[class_ind], width=self._settings.grid_cell_size * 30),
+                marker=dict(size=self._settings.grid_cell_size * 30),
+                legendgroup=self._settings.get_class_name(class_ind),  
+                name=self._settings.get_class_name(class_ind),
+                showlegend=False,
+            )
         
         # Add arrow in the direction of the object
         arrow_length = int(np.cast["float32"](dimension[0]) * 0.8)
@@ -254,7 +269,6 @@ class BEVBoxAnimation:
             arrowcolor="#247BA0",
         )
         #fig.update_layout(showlegend=False)
-
 
     def _activate_legend(self, fig):
         """Activate legend with all classes."""

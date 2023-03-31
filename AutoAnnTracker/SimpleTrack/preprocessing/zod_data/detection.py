@@ -83,7 +83,7 @@ def main(det_name, file_path, detection_folder, data_folder):
             if sample_key in tokens[scene_name]:
                 frame_index = tokens[scene_name].index(sample_key)
                 break
-        
+
         # extract the bboxes and types
         sample_results = det_data[sample_key]
         for sample in sample_results:

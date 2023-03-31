@@ -5,7 +5,14 @@ from ..data_protos import BBox
 class Visualizer2D:
     def __init__(self, name='', figsize=(8, 8)):
         self.figure = plt.figure(name, figsize=figsize)
-        plt.axis('equal')
+        #plt.axis('equal')
+        plt.xlim(0, 200)
+        plt.ylim(-100, 100)
+        #plt.xlim(-40, 40)
+        #plt.ylim(-10, 80)
+
+        self.frame_idx = 0
+
         self.COLOR_MAP = {
             'gray': np.array([140, 140, 136]) / 256,
             'light_blue': np.array([4, 157, 217]) / 256,
@@ -23,6 +30,8 @@ class Visualizer2D:
         plt.close()
     
     def save(self, path):
+        #plt.xlim(-10, 150)
+        #plt.ylim(-150, 10)
         plt.savefig(path)
     
     def handler_pc(self, pc, color='gray'):
@@ -35,3 +44,6 @@ class Visualizer2D:
         plt.plot(corners[:, 0], corners[:, 1], color=self.COLOR_MAP[color], linestyle=linestyle)
         corner_index = np.random.randint(0, 4, 1)
         plt.text(corners[corner_index, 0] - 1, corners[corner_index, 1] - 1, message, color=self.COLOR_MAP[color])
+
+    def next_frame(self):
+        self.frame_idx += 1
