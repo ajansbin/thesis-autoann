@@ -22,9 +22,9 @@ data:
   feature_dim: 11 #same as input_dim for the model
   foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
   window_size: 5
-  sliding_window: false
+  sliding_window: true
   gt_dim: 11 # same as out_dim for the model
-  association_metric: giou #[giou, l2]
+  association_metric: l2 #[giou, l2]
   association_thresholds:
     giou: -0.5
     l2: 2
@@ -36,15 +36,15 @@ data:
     yaw_offset: true #not implemented yet
     normalize:
       normalize: true
-      center: # this is offset-dependent normalization
-        mean: [0.03621180372581629, -0.2099173730468761, 0.0026075183395728057]
-        stdev: [5.865156088128115, 11.65336534100735, 0.4232649214239788]
+      center:
+        mean: [-0.7403758818885848, 12.456019891166937, 0.05133675600156881]
+        stdev: [9.108403177866625, 18.42625430749155, 0.6679415543611777]
       size:
-        mean:  [3.664073049531213, 1.587799651724494, 1.7577496072774077]
-        stdev: [4.607203312479755, 1.728919607809592, 1.8375323855211547]
+        mean:  [0.7958234996382493, 1.9855084779905638, 0.7304498132045052]
+        stdev: [1.0035098683787815, 2.9601490811966515, 0.9963779296023921]
       rotation:
-        mean: [0.517103294721415, 0.0, 0.0, 0.5277412706723021]
-        stdev: [0.6856551746488713, 1.0, 1.0, 0.7279287477380058]
+        mean: [-0.1528714150608052, 0.0, 0.0, -0.26734145896719846]
+        stdev: [0.41135998440020294, 1.0, 1.0, 0.36315544073599504]
       score:
         mean: [0.0]
         stdev: [1]
@@ -57,7 +57,7 @@ train:
   learning_rate: 1.0E-4
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 100
+  batch_size: 250
   n_workers: 1
   n_epochs: 20
   seed: 0

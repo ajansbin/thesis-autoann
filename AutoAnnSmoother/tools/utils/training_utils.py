@@ -86,7 +86,6 @@ class TrainingUtils():
                 model_output = model.forward(tracks.clone())
                 loss = self.loss_fn(model_output.view(-1, self.out_size), gt_anns.float())
                 val_loss_cum += loss.item()
-                torch.set_printoptions(threshold=10000)
 
                 foi_indexes = self._find_foi_indexes(tracks)
                 foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :]

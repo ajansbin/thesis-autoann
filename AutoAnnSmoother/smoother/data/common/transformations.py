@@ -3,33 +3,31 @@ from smoother.data.common.dataclasses import Tracklet
 
 class Transformation():
 
-    def transform(x, x_other=None):
+    def transform(self):
         raise NotImplementedError('Calling method for abstract class Transformations')
-    
-    def set_offset(self, x):
-        pass
 
     def untransform(self, x):
         return x
     
 class ToTensor(Transformation):
 
-    def __init__(self):
-        pass
+    def __init__(self, device=torch.device('cpu')):
+        self.device = device
 
     def transform(self, x) -> torch.tensor:
-        return torch.tensor(x,dtype=torch.float32)
+        return torch.tensor(x,dtype=torch.float32).to(self.device)
 
 class Normalize(Transformation):
 
-    def __init__(self, means:list, stds:list):
-        self.means = torch.tensor(means, dtype=torch.float32)
-        self.stds = torch.tensor(stds, dtype=torch.float32)
+    def __init__(self, means:list, stds:list, device=torch.device('cpu')):
+        self.means = torch.tensor(means, dtype=torch.float32).to(device)
+        self.stds = torch.tensor(stds, dtype=torch.float32).to(device)
 
         self.start_index = 0
         self.end_index = -1
 
     def transform(self,x:torch.tensor) -> torch.tensor:
+
         if len(x.shape) > 1:
              x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]-self.means)/self.stds
         else:

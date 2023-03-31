@@ -21,7 +21,11 @@ class PointNet(nn.Module):
         self.max_pool = nn.MaxPool2d(kernel_size, stride, padding)
         
 
-        self.fc_out = nn.Linear(mlp3_sizes[-1], out_size)
+        self.fc_center = MLP(mlp3_sizes[-1], [128,64,32,3])
+        self.fc_size = MLP(mlp3_sizes[-1], [128,64,32,3])
+        self.fc_rotation = MLP(mlp3_sizes[-1], [128,64,32,4])
+        self.fc_confidence = MLP(mlp3_sizes[-1], [128,64,32,1])
+
 
     def forward(self, x):
         x_t_net1 = self.t_net1(x)
@@ -32,9 +36,15 @@ class PointNet(nn.Module):
         x = self.mlp2(x)
         x = self.max_pool(x)
         x = self.mlp3(x)
-        x = self.fc_out(x)
 
-        return x
+        center = self.fc_center(x)
+        size = self.fc_size(x)
+        rotation = self.fc_rotation(x)
+        confidence_score = torch.sigmoid(self.fc_confidence(x))
+
+        output = torch.cat((center, size, rotation, confidence_score), dim=-1)
+
+        return output
     
 
 class MLP(nn.Module):

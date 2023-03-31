@@ -43,6 +43,10 @@ def load_gt(data_path, scene_tokens, verbose=False):
     seq_gt = {}
     for sequence in tqdm.tqdm(sequences, leave=verbose):
         frame_path = os.path.join(sequence_path, sequence, "annotations/object_detection/")
+        
+        if not os.path.exists(frame_path):
+            continue
+        
         frame_json = os.listdir(frame_path)[0]
 
         frame_token  = frame_json

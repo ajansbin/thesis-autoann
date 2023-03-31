@@ -22,6 +22,9 @@ class TrackingData():
         self.data_samples = list(self._get_data_samples())
         self.max_track_length = 180
 
+        self.center_offset_index = None
+        self.normalize_index = None
+
         # set center_offset_transformation index for later look-up
         for i, transformations in enumerate(self.transformations):
             if type(transformations) == CenterOffset:
@@ -71,7 +74,7 @@ class TrackingData():
                 gt_data = transformation.transform(gt_data)
 
         # update target confidence after transformations
-        if track.has_gt:
+        if track.has_gt and self.normalize_index is not None:
             foi_center = track_data[foi_data_index,0:3]
             gt_center = gt_data[0:3]
             new_dist = torch.norm(gt_center-foi_center)
