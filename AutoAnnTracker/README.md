@@ -26,7 +26,7 @@ cd AutoAnnTracker/SimpleTrack
 
 To run preprocessing of SimpleTrack run:
 ``` bash
-python preprocessing/zod_data/zod_preprocess.sh <datapath> <preprocessed_folder> <version> <split>
+bash preprocessing/zod_data/zod_preprocess.sh <datapath> <preprocessed_folder> <version> <split>
 ```
 
 ``` bash
