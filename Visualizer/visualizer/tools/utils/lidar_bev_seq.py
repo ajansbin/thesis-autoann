@@ -226,12 +226,13 @@ class BEVBoxAnimation:
 
         if is_tracks:
             track_idx = self.track_ids.index(track_id)
+            col = self._color[track_idx % len(self._color)] if track_id != 'gt' else 'white'
             #track_idx = self.track_id_colors.index(track_id)
             # Add rotated bounding box
             fig.add_scatter(
                 x=all_coords[:, 0],
                 y=all_coords[:, 1],
-                line=dict(color=self._color[track_idx % len(self._color)], width=self._settings.grid_cell_size * 30),
+                line=dict(color=col, width=self._settings.grid_cell_size * 30),
                 marker=dict(size=self._settings.grid_cell_size * 30),
                 legendgroup=track_id,
                 name=track_id,
@@ -242,7 +243,7 @@ class BEVBoxAnimation:
             fig.add_scatter(
                 x=all_coords[:, 0],
                 y=all_coords[:, 1],
-                line=dict(color=self._color[class_ind], width=self._settings.grid_cell_size * 30),
+                line=dict(color=col, width=self._settings.grid_cell_size * 30),
                 marker=dict(size=self._settings.grid_cell_size * 30),
                 legendgroup=self._settings.get_class_name(class_ind),  
                 name=self._settings.get_class_name(class_ind),
@@ -266,7 +267,8 @@ class BEVBoxAnimation:
             ay=position[1],
             arrowhead=3,
             arrowwidth=self._settings.grid_cell_size * 20,
-            arrowcolor="#247BA0",
+            #arrowcolor="#247BA0",
+            arrowcolor=col,
         )
         #fig.update_layout(showlegend=False)
 

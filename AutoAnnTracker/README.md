@@ -1,19 +1,90 @@
-This repo is for the tracking part of the auotomatic annotation pipeline
+This repo is for the tracking part of the auotomatic annotation pipeline.
+
+Please go to AutoAnnTracker: <br>
+``` bash
+cd AutoAnnTracker/SimpleTrack
+```
+
+Existing trackers require the detections to be in world coordinate system. To convert results from lidar to world coordinates run: <br>
+``` bash
+python convert_results.py \
+	--result-path <detections_lidar_coord> \
+	--save-path <detections_world_coord> \
+	--version <version> \
+	--split <split> \
+	--convert-to world \
+	--type detections	
+```
+
+Please stand inside the specific tracker under AutoAnnTracker for running the tracking. <br>
+
+**SimpleTrack** <br>
+
+``` bash
+cd AutoAnnTracker/SimpleTrack
+```
+
+To run preprocessing of SimpleTrack run:
+``` bash
+python preprocessing/zod_data/zod_preprocess.sh <datapath> <preprocessed_folder> <version> <split>
+```
+
+``` bash
+python preprocessing/zod_data/detection.py \
+	--raw_data_folder <datapath> \
+	--data_folder <preprocessed_folder> \
+	--det_name detections \
+	--file_path <detections_world_coord> \
+	--version <version> \
+	--split <split>
+```
+
+To run tracking:
+``` bash
+python python tools/main_zod.py \
+    --name <tracking_name> \
+    --det_name detections \
+    --config_path configs/zod_configs/giou.yaml \
+    --result_folder <save_folder> \
+    --data_folder <preprocessed_folder> \
+    --process 8
+```
+
+Format results:
+``` bash
+python tools/zod_result_creation.py \
+    --name <tracking_name> \
+    --result_folder <save_folder> \
+    --data_folder <preprocessed_folder>
+```
+
+Merge all classes to one result file:
+``` bash
+python tools/zod_type_merge.py \
+    --name <tracking_name> \
+    --result_folder <save_folder>
+```
 
 
-Please stand inside AutoAnnTracker for running the detection-code. <br>
-
+To format back results to lidar coordinate system run:
 ``` bash
 cd AutoAnnTracker
 ```
 
-Before tracking please choose which tracker to use and prepare data accordingly: <br>
 ``` bash
-python tools/prepare_data.py --tracker SimpleTrack --data zod --data-root path/to/zod --out-dir path/to/outdir
-```
+python tools/convert_results.py \
+	--result-path <detections_lidar_coord> \
+	--save-path <detections_world_coord> \
+	--version <version> \
+	--split <split> \
+	--convert-to world \
+	--type detections
 
-To track detections please run the following<br>
-
-``` bash
-python tools/track.py dets_json --config config-file --out-dir path/to/tracking/output
+python convert_results.py \
+	--result-path <detections_lidar_coord> \
+	--save-path <detections_world_coord> \
+	--version <version> \
+	--split <split> \
+	--convert-to lidar \
+	--type tracks	
 ```

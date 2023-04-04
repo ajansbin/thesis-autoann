@@ -149,13 +149,13 @@ def main(name, obj_types, config_path, data_folder, det_data_folder, result_fold
         # load model configs
         configs = yaml.load(open(config_path, 'r'), Loader=yaml.Loader)
     
-        subset = ['000457.npz', '000255.npz', '001127.npz', '001219.npz', '001391.npz', '001257.npz', '001019.npz', '000417.npz']
+        #subset = ['000457.npz', '000255.npz', '001127.npz', '001219.npz', '001391.npz', '001257.npz', '001019.npz', '000417.npz']
         #subset = ['000169', '000807', '000537', '000163', '000121', '001405', '001274', '000686']
         for file_index, file_name in enumerate(file_names[:]):
-            if file_name not in subset:
-                continue
-            else:
-                print
+            #if file_name not in subset:
+            #    continue
+            #else:
+            #    print
             
             if file_index % process != token:
                 continue
