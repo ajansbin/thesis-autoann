@@ -152,16 +152,14 @@ class SmoothingInferer():
             frame_token = self.frame_tokens[foi_index]
             frame_results['results'][frame_token] = []
 
-            #inferer_data = WindowInferer(self.data_model, foi_index, -window_half, window_half)
-            inferer_data = SlidingWindowInferer(self.data_model, foi_index, self.window_size)
+            inferer_data = WindowInferer(self.data_model, foi_index, -window_half, window_half)
+            #inferer_data = SlidingWindowInferer(self.data_model, foi_index, self.window_size)
 
             #infer_dataloader = DataLoader(inferer_data, batch_size=self.batch_size, shuffle=False, num_workers=self.n_workers)
             #refined_boxes = []
             track_ids = {}
             for i, x in enumerate(inferer_data):
 
-                #if x == torch.tensor([]):
-                #    continue
                 track = x.to(self.device)
                 track_object = inferer_data.get(i)
 
@@ -190,15 +188,7 @@ class SmoothingInferer():
                 if track_id in track_ids:
                     track_ids[track_id] = torch.cat((track_ids[track_id], refined_track.unsqueeze(0)), dim=0)
                 else:
-                    #print("new Track id", track_id)
                     track_ids[track_id] = refined_track.unsqueeze(0)
-                # if track_id in track_ids:
-                #     track_ids[track_id] = torch.stack((track_ids[track_id], refined_track.unsqueeze(0)))
-                # else:
-                #     track_ids[track_id] = refined_track
-                #track_ids[track_object.tracking_id] = track_ids.get(track_object.tracking_id, torch.tensor([])).stack(refined_track)
-
-            #print("LENGTH", len(track_ids.keys()))
                 
             for track_id, refined_tracks in track_ids.items():
 

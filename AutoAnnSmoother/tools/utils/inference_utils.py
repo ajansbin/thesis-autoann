@@ -134,13 +134,9 @@ class SlidingWindowInferer():
                 yield track
 
     def get(self, sliding_track_index): 
-        #track_index = sliding_track_index % self.window_size
         track_index = sliding_track_index % len(self.sequence_inferer)  
         return self.sequence_inferer.get(track_index)
-    
-    # w = 5
-    # ind = 8
-    # track_index 3
+
 
         
 

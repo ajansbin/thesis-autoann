@@ -32,9 +32,6 @@ def PolyArea2D(pts):
     return area
 
 def giou3d(gt, pred):
-    #center = np.array(preds['translation'])
-    #size = np.array(preds['size'])
-    #rotation = preds['rotation']
     center = np.array(pred[0:3])
     size = np.array(pred[3:6])
     #rotation = np.array(pred[6:10])
