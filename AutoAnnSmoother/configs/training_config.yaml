@@ -26,7 +26,7 @@ data:
   #gt_dim: 11 # same as out_dim for the model
   association_metric: giou #[giou, l2]
   association_thresholds:
-    giou: 0
+    giou: -0.5
     l2: 2
   remove_bottom_center: true # if increases the z dimension by half the height for the detections
 

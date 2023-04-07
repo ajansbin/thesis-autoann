@@ -1,0 +1,56 @@
+import numpy as np
+from shapely.geometry import Polygon
+from scipy.spatial import ConvexHull
+from pyquaternion import Quaternion
+from zod.data_classes.box import Box3D
+from zod.constants import Lidar
+from smoother.data.loading.loader import convert_to_quaternion, convert_to_sine_cosine
+import torch
+
+def l2(gt_boxes, pred_box):
+    gt_centers = [gt_box["translation"] for gt_box in gt_boxes]
+    pred_center = pred_box.center
+    diff = torch.tensor(gt_centers, dtype=torch.float32) - torch.tensor(pred_center, dtype=torch.float32)
+    dists = torch.norm(diff, dim=1)
+    return dists
+
+def calculate_giou3d_matrix(gts, pred):
+    gt_array = np.array([list(gt['translation']) + list(gt['size']) + list(gt['rotation']) for gt in gts])
+    pred_array = np.array(list(pred.center) + list(pred.size) + list(pred.rotation))
+    giou = giou3d(gt_array, pred_array)
+    return giou
+
+def PolyArea2D(pts):
+    roll_pts = np.roll(pts, -1, axis=0)
+    area = np.abs(np.sum((pts[:, 0] * roll_pts[:, 1] - pts[:, 1] * roll_pts[:, 0]))) * 0.5
+    return area
+
+def giou3d(gts, pred):
+    centers, sizes, rotations = gts[:, 0:3], gts[:, 3:6], gts[:, 6:8]
+    gt_boxes = [Box3D(c, s, convert_to_quaternion(r), Lidar) for c, s, r in zip(centers, sizes, rotations)]
+
+    pred_center, pred_size, pred_rotation = pred[0:3], pred[3:6], convert_to_quaternion(pred[6:8])
+    pred_box = Box3D(pred_center, pred_size, pred_rotation, Lidar)
+
+    gt_corners_bev = np.array([box.corners_bev for box in gt_boxes])
+    pred_corners_bev = pred_box.corners_bev
+
+    reca, recb = Polygon(pred_corners_bev), [Polygon(box_corners) for box_corners in gt_corners_bev]
+    I_areas = np.array([reca.intersection(rec).area for rec in recb])
+
+    ha, hb = pred_box.size[2], np.array([box.size[2] for box in gt_boxes])
+    za, zb = pred_box.center[2], np.array([box.center[2] for box in gt_boxes])
+
+    overlap_height = np.maximum(0, np.minimum(za + ha / 2 - (zb - hb / 2), zb + hb / 2 - (za - ha / 2)))
+    union_height = np.maximum(za + ha / 2 - (zb - hb / 2), zb + hb / 2 - (za - ha / 2))
+
+    I = I_areas * overlap_height
+    U = pred_size[1] * pred_size[0] * ha + np.array([box.size[1] * box.size[0] * box.size[2] for box in gt_boxes]) - I
+
+    all_corners = np.array([np.vstack((pred_corners_bev, box_corners)) for box_corners in gt_corners_bev])
+    convex_area = np.array([PolyArea2D(corners[ConvexHull(corners).vertices]) for corners in all_corners])
+    C = convex_area * union_height
+
+    giou = I / U - (C - U) / C
+    return giou
+

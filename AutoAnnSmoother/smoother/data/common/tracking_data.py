@@ -5,6 +5,8 @@ from smoother.data.common.transformations import Transformation, ToTensor
 import torch
 import numpy as np
 from smoother.data.common.transformations import CenterOffset, YawOffset, Normalize
+import os
+import copy
 
 
 class TrackingData():
@@ -110,7 +112,7 @@ class TrackingData():
 
 
     def _get_point_clouds(self, track):
-        root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed'
+        root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_full_train'
         
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
@@ -136,7 +138,8 @@ class TrackingData():
                 frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
                 if frame_pred_boxes == []:
                     continue   
-                for box in frame_pred_boxes:
+                for b in frame_pred_boxes:
+                    box = copy.deepcopy(b)
                     box["is_foi"] = self.tracking_results.foi_indexes[sequence_token] == frame_index
                     box["frame_index"] = frame_index
                     box["frame_token"] = frame_token
@@ -157,6 +160,7 @@ class TrackingData():
             for track_id, track in track_ids.items():
                 if track.foi_index is not None:
                     track_ids_filtered[track_id] = track
+
             # Associate ground truth to each track
             gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
             track_ids_filtered_has_gt = defaultdict(None)
@@ -188,14 +192,15 @@ class WindowTrackingData():
         return len(self.tracking_data)
 
     def __getitem__(self, index):
-        track_data, gt_data = self.tracking_data[index]
+        track_data, point_data, gt_data = self.tracking_data[index]
         foi_index = self.tracking_data.get_foi_index(index)
         start_index = foi_index + self.window_start
         end_index = foi_index + self.window_end
 
         wind_track_data = track_data[start_index:end_index+1]
+        wind_point_data = point_data[start_index:end_index+1]
 
-        return wind_track_data, gt_data
+        return wind_track_data, wind_point_data, gt_data
     
     def get(self, track_index):
         return self.tracking_data.get(track_index)
@@ -219,17 +224,17 @@ class SlidingWindowTrackingData():
         return len(self.data)
     
     def __getitem__(self, index):
-        track_data, gt_data = self.data[index]
+        track_data, point_data, gt_data = self.data[index]
 
-        return track_data, gt_data
+        return track_data, point_data, gt_data
 
     def _get_data_samples(self):
         for i in range(self.window_size):
             start_ind = i - self.window_size + 1
             end_ind = start_ind + self.window_size - 1
             wind_track_nusc = WindowTrackingData(self.tracking_results,start_ind, end_ind, self.transformations, self.tracking_data)
-            for track, track_gt in wind_track_nusc:
-                yield track, track_gt
+            for track, point, track_gt in wind_track_nusc:
+                yield track, point, track_gt
 
     def get(self, sliding_track_index):
         track_index = sliding_track_index % len(self.tracking_data)
