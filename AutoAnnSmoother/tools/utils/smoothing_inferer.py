@@ -1,6 +1,6 @@
 from smoother.io.config_utils import load_config
 from smoother.data.common.sequence_data import SequenceData
-from smoother.data.common.transformations import ToTensor, CenterOffset, Normalize
+from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
 from smoother.models.pointnet import PointNet
 from smoother.models.transformer import PointTransformer
 from tools.utils.inference_utils import WindowInferer, SlidingWindowInferer
@@ -169,6 +169,10 @@ class SmoothingInferer():
 
                 for transformation in reversed(self.transformations):
                     if type(transformation) == CenterOffset:
+                        offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
+                        transformation.set_offset(offset)
+                        transformation.set_start_and_end_index(0, -1)
+                    elif type(transformation) == YawOffset:
                         offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
                         transformation.set_offset(offset)
                         transformation.set_start_and_end_index(0, -1)

@@ -27,15 +27,18 @@ class Normalize(Transformation):
         self.end_index = -1
 
     def transform(self,x:torch.tensor) -> torch.tensor:
-
-        if len(x.shape) > 1:
-             x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]-self.means)/self.stds
+        if x.ndim > 1: #temporal encoding not normalized
+            x[self.start_index:self.end_index, :-1] = (x[self.start_index:self.end_index,:-1]-self.means)/self.stds
+        elif len(x.shape) > 1:
+            x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]-self.means)/self.stds
         else:
             x = (x-self.means)/self.stds
         return x
 
     def untransform(self,x:torch.tensor) -> torch.tensor:
-        if len(x.shape) > 1:
+        if x.ndim > 1:  #temporal encoding not normalized
+            x[self.start_index:self.end_index, :-1] = (x[self.start_index:self.end_index,:-1]*self.stds)+self.means
+        elif len(x.shape) > 1:
              x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]*self.stds)+self.means
         else:
             x = (x*self.stds + self.means)
@@ -70,6 +73,35 @@ class CenterOffset(Transformation):
     
     def set_offset(self, x:list):
         self.offset = torch.tensor(x[0:3], dtype=torch.float32)
+
+    def set_start_and_end_index(self,start_index,end_index):
+        self.start_index = start_index
+        self.end_index = end_index
+
+class YawOffset(Transformation):
+
+    def __init__(self):
+        self.offset = None
+
+        self.start_index = 0
+        self.end_index = -1
+
+    def transform(self,x:torch.tensor) -> torch.tensor:
+        if len(x.shape) > 1:
+            x[self.start_index:self.end_index,6:8] = x[self.start_index:self.end_index,6:8] - self.offset        
+        else:
+            x[6:8] = x[6:8] - self.offset
+        return x
+    
+    def untransform(self,x:torch.tensor) -> torch.tensor:
+        if len(x.shape) > 1:
+            x[self.start_index:self.end_index,6:8] = x[self.start_index:self.end_index,6:8] + self.offset        
+        else:
+            x[6:8] = x[6:8] - self.offset
+        return x
+    
+    def set_offset(self, x:list):
+        self.offset = torch.tensor(x[6:8], dtype=torch.float32)
 
     def set_start_and_end_index(self,start_index,end_index):
         self.start_index = start_index

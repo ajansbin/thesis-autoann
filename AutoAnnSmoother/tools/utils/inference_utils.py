@@ -24,7 +24,7 @@ class SequenceInferer():
         track_data = []
         for i in range(self.max_track_length):
             if i < track_start_index or i >= track_end_index:
-                pad_data = [0]*10 + [i-self.foi_index]
+                pad_data = [0]*8 + [i-self.foi_index]
                 track_data.append(pad_data)
             else:
                 box = track[i-track_start_index]
@@ -35,7 +35,11 @@ class SequenceInferer():
             if i == self.center_offset_index:
                 foi_data = track_data[self.foi_index]
                 transformation.set_offset(foi_data)
-                track.set_offset(transformation.offset)
+                track.set_center_offset(transformation.offset)
+            elif i == self.yaw_offset_index:
+                foi_data = track_data[self.foi_index]
+                transformation.set_offset(foi_data)
+                track.set_yaw_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
                 transformation.set_start_and_end_index(track_start_index, track_end_index)

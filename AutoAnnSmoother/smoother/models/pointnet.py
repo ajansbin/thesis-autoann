@@ -3,7 +3,8 @@ import torch
 
 class PointNet(nn.Module):
 
-    def __init__(self, input_dim=11, out_size=11, mlp1_sizes=[64,64], mlp2_sizes=[64,128,1024], mlp3_sizes=[512,256], window_size=5):
+    #def __init__(self, input_dim=11, out_size=11, mlp1_sizes=[64,64], mlp2_sizes=[64,128,1024], mlp3_sizes=[512,256], window_size=5):
+    def __init__(self, input_dim=9, out_size=8, mlp1_sizes=[64,64], mlp2_sizes=[64,128,1024], mlp3_sizes=[512,256], window_size=5):
         super(PointNet, self).__init__()
         self.input_dim = input_dim
 
@@ -23,7 +24,8 @@ class PointNet(nn.Module):
 
         self.fc_center = MLP(mlp3_sizes[-1], [128,64,32,3])
         self.fc_size = MLP(mlp3_sizes[-1], [128,64,32,3])
-        self.fc_rotation = MLP(mlp3_sizes[-1], [128,64,32,4])
+        #self.fc_rotation = MLP(mlp3_sizes[-1], [128,64,32,4])
+        self.fc_rotation = MLP(mlp3_sizes[-1], [128,64,32,2])
         self.fc_confidence = MLP(mlp3_sizes[-1], [128,64,32,1])
 
 
@@ -40,9 +42,10 @@ class PointNet(nn.Module):
         center = self.fc_center(x)
         size = self.fc_size(x)
         rotation = self.fc_rotation(x)
-        confidence_score = torch.sigmoid(self.fc_confidence(x))
+        #confidence_score = torch.sigmoid(self.fc_confidence(x))
 
-        output = torch.cat((center, size, rotation, confidence_score), dim=-1)
+        #output = torch.cat((center, size, rotation, confidence_score), dim=-1)
+        output = torch.cat((center, size, rotation), dim=-1)
 
         return output
     

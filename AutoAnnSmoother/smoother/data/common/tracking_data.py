@@ -4,7 +4,7 @@ from smoother.data.common.dataclasses import TrackingBox, Tracklet
 from smoother.data.common.transformations import Transformation, ToTensor
 import torch
 import numpy as np
-from smoother.data.common.transformations import CenterOffset, Normalize
+from smoother.data.common.transformations import CenterOffset, YawOffset, Normalize
 
 
 class TrackingData():
@@ -23,12 +23,15 @@ class TrackingData():
         self.max_track_length = 180
 
         self.center_offset_index = None
+        self.yaw_offset_index = None
         self.normalize_index = None
 
         # set center_offset_transformation index for later look-up
         for i, transformations in enumerate(self.transformations):
             if type(transformations) == CenterOffset:
                 self.center_offset_index = i
+            if type(transformations) == YawOffset:
+                self.yaw_offset_index = i
             if type(transformations) == Normalize:
                 self.normalize_index = i
 
@@ -44,9 +47,10 @@ class TrackingData():
             size = list(gt_box['size'])
             rotation = list(gt_box['rotation'])
             target_confidence = [0]#[np.exp(-self.score_dist_temp*gt_box["distance"])]
-            gt_data = center + size + rotation + target_confidence
+            gt_data = center + size + rotation #+ target_confidence
         else:
-            gt_data = [0]*11
+            #gt_data = [0]*11
+            gt_data = [0]*8
 
 
         track_start_index = track.starting_frame_index
@@ -54,7 +58,7 @@ class TrackingData():
         track_data = []
         for i in range(self.max_track_length):
             if i < track_start_index or i >= track_end_index:
-                pad_data = [0]*10 + [i-track.foi_index]
+                pad_data = [0]*8 + [i-track.foi_index]
                 track_data.append(pad_data)
             else:
                 box = track[i-track_start_index]
@@ -65,7 +69,12 @@ class TrackingData():
             if i == self.center_offset_index:
                 foi_data = track_data[track.foi_index]
                 transformation.set_offset(foi_data)
-                track.set_offset(transformation.offset)
+                track.set_center_offset(transformation.offset)
+                transformation.set_start_and_end_index(track_start_index, track_end_index)
+            if i == self.yaw_offset_index:
+                foi_data = track_data[track.foi_index]
+                transformation.set_offset(foi_data)
+                track.set_yaw_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
@@ -74,11 +83,11 @@ class TrackingData():
                 gt_data = transformation.transform(gt_data)
 
         # update target confidence after transformations
-        if track.has_gt and self.normalize_index is not None:
-            foi_center = track_data[foi_data_index,0:3]
-            gt_center = gt_data[0:3]
-            new_dist = torch.norm(gt_center-foi_center)
-            gt_data[10] = np.exp(-self.score_dist_temp*new_dist)
+        #if track.has_gt and self.normalize_index is not None:
+            #foi_center = track_data[foi_data_index,0:3]
+            #gt_center = gt_data[0:3]
+            #new_dist = torch.norm(gt_center-foi_center)
+            #gt_data[-1] = np.exp(-self.score_dist_temp*new_dist)
 
         return track_data, gt_data
     
@@ -98,6 +107,7 @@ class TrackingData():
 
     def _format_tracking_data(self):
         sequences = self.tracking_results.seq_tokens
+        
 
         seq_tracking_ids = {}
         for sequence_token in tqdm.tqdm(sequences):
@@ -107,11 +117,10 @@ class TrackingData():
             for frame_index, frame_token in enumerate(sequence_frames):
                 frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
                 if frame_pred_boxes == []:
-                    continue
+                    continue   
                 for box in frame_pred_boxes:
                     box["is_foi"] = self.tracking_results.foi_indexes[sequence_token] == frame_index
                     box["frame_index"] = frame_index
-
                     if self.remove_bottom_center:
                         box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
 
@@ -128,13 +137,15 @@ class TrackingData():
             for track_id, track in track_ids.items():
                 if track.foi_index is not None:
                     track_ids_filtered[track_id] = track
-
             # Associate ground truth to each track
             gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
+            track_ids_filtered_has_gt = defaultdict(None)
             for track_id, track in track_ids_filtered.items():
                 track.associate(gt_boxes)
-
-            seq_tracking_ids[sequence_token] = track_ids_filtered
+                if track.has_gt:
+                    track_ids_filtered_has_gt[track_id] = track
+            #seq_tracking_ids[sequence_token] = track_ids_filtered
+            seq_tracking_ids[sequence_token] = track_ids_filtered_has_gt
         return seq_tracking_ids
     
 

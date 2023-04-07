@@ -6,6 +6,7 @@ from zod.constants import Lidar
 from pyquaternion import Quaternion
 from scipy.spatial import ConvexHull
 from shapely.geometry import Polygon
+from smoother.data.loading.loader import convert_to_quaternion, convert_to_sine_cosine
 
 
 def l2(gt_boxes, pred_box):
@@ -36,12 +37,14 @@ def giou3d(gt, pred):
     #rotation = preds['rotation']
     center = np.array(pred[0:3])
     size = np.array(pred[3:6])
-    rotation = np.array(pred[6:10])
+    #rotation = np.array(pred[6:10])
+    rotation = convert_to_quaternion(np.array(pred[6:8]))
 
     gt_center = np.array(gt[0:3])
     gt_size = np.array(gt[3:6])
-    gt_rotation = np.array(gt[6:10])
-   
+    #gt_rotation = np.array(gt[6:10])
+    gt_rotation = convert_to_quaternion(np.array(gt[6:8]))
+    
     #gt_center = np.array(gts['translation'])
     #gt_size = np.array(gts['size'])
     #gt_rotation = gts['rotation']
@@ -49,14 +52,16 @@ def giou3d(gt, pred):
     box = Box3D(
         center,
         size,
-        Quaternion(rotation),
+        #Quaternion(rotation),
+        rotation,
         Lidar
     )
 
     gt_box = Box3D(
         gt_center,
         gt_size,
-        Quaternion(gt_rotation),
+        #Quaternion(gt_rotation),
+        gt_rotation,
         Lidar
     ) 
 

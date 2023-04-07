@@ -4,7 +4,8 @@ import torch
 import copy
 from typing import Any, Dict, Optional
 from tools.utils.evaluation import giou3d,calculate_giou3d_matrix, l2
-
+from smoother.data.loading.loader import convert_to_sine_cosine, convert_to_quaternion
+from pyquaternion import Quaternion
 
 @dataclass
 class TrackingBox():
@@ -18,6 +19,7 @@ class TrackingBox():
     tracking_name: str
 
     center_offset: Optional[list]
+    yaw_offset: Optional[list]
 
     @classmethod
     def from_dict(cls, box_dict):
@@ -29,18 +31,20 @@ class TrackingBox():
             is_foi = box_dict["is_foi"],
             frame_index = box_dict["frame_index"],
             tracking_name = box_dict["tracking_name"],
-            center_offset = None
+            center_offset = None,
+            yaw_offset = None
         )
 
     def to_dict(self):
         return {"tracking_id": self.tracking_id,
                 "center": self.center,
                 "size": self.size,
-                "rotation": self.rotation,
+                "rotation": convert_to_quaternion(self.rotation),
                 "is_foi": self.is_foi,
                 "frame_index":self.frame_index,
                 "tracking_name":self.tracking_name,
-                "center_offset": self.center_offset}
+                "center_offset": self.center_offset,
+                "yaw_offset": self.yaw_offset}
         
 
 class Tracklet():
@@ -59,7 +63,8 @@ class Tracklet():
         self.gt_box = None
         self.gt_dist = None
 
-        self.offset = None
+        self.center_offset = None
+        self.yaw_offset = None
 
     def __repr__(self) -> str:
         return str({"sequence_id": self.sequence_id, 
@@ -114,5 +119,9 @@ class Tracklet():
             self.gt_box = closest_gt
             self.gt_dist = gt_dist
     
-    def set_offset(self, offset):
-        self.offset = offset
+    def set_center_offset(self, offset):
+        self.center_offset = offset
+    
+    def set_yaw_offset(self, offset):
+        self.yaw_offset = offset
+

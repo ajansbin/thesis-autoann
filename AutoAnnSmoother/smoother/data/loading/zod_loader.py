@@ -5,6 +5,10 @@ from zod import ZodSequences
 from zod.constants import Lidar
 from zod.anno.object import AnnotatedObject
 
+from pyquaternion import Quaternion
+from smoother.data.loading.loader import convert_to_sine_cosine
+
+
 def get_available_scenes(zod: ZodSequences, split):
 
     available_scenes = []
@@ -66,13 +70,15 @@ def load_gt(data_path, scene_tokens, verbose=False):
 
             translation = ann_obj.box3d.center
             size = ann_obj.box3d.size
-            rotation = ann_obj.box3d.orientation
+            rotation = Quaternion(ann_obj.box3d.orientation)
+                        
 
             this_box = {
                 "sample_token": frame_token,
                 "translation": translation,
                 "size": size,
-                "rotation": rotation,
+                #"rotation": rotation,
+                "rotation": convert_to_sine_cosine(rotation),
                 "velocity": [0.0,0.0],
                 #"num_pts":sample_annotation['num_lidar_pts'] + sample_annotation['num_radar_pts'],
                 "detection_name":ann_obj.name,

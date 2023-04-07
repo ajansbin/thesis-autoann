@@ -30,8 +30,11 @@ class BoxRefinementLoss():
         gt_sizes = gts[:,3:6]
         size_loss = F.l1_loss(sizes,gt_sizes, reduction="mean")
 
-        rotation = predictions[:,6:10]
-        gt_rotation = gts[:,6:10]
+        #rotation = predictions[:,6:10]
+        #gt_rotation = gts[:,6:10]
+        rotation = predictions[:,6:8]
+        gt_rotation = gts[:,6:8]
+        
         rotation_loss = F.l1_loss(rotation,gt_rotation, reduction="mean")
         return center_loss, size_loss, rotation_loss
 
@@ -58,21 +61,24 @@ class BoxRefinementLoss():
         gt_sizes = gts[:,3:6]
         size_loss = self.l1_loss(sizes,gt_sizes)
 
-        rotation = predictions[:,6:10]
-        gt_rotation = gts[:,6:10]
+        #rotation = predictions[:,6:10]
+        #gt_rotation = gts[:,6:10]        
+        rotation = predictions[:,6:8]
+        gt_rotation = gts[:,6:8]
+
         rotation_loss = self.l1_loss(rotation,gt_rotation)
 
         return center_loss, size_loss, rotation_loss
 
     def loss(self, predictions, gt):
         center_loss, size_loss, rotation_loss = self.loss_fn(predictions, gt)
-        score_loss = self.compute_score_loss(predictions,gt)
+        #score_loss = self.compute_score_loss(predictions,gt)
         center_loss *= self.loss_weights["center"]
         size_loss *= self.loss_weights["size"]
         rotation_loss *= self.loss_weights["rotation"]
-        score_loss *= self.loss_weights["score"]
-        l = center_loss + size_loss + rotation_loss + score_loss
-        return center_loss + size_loss + rotation_loss + score_loss
+        #score_loss *= self.loss_weights["score"]
+        l = center_loss + size_loss + rotation_loss #+ score_loss
+        return center_loss + size_loss + rotation_loss #+ score_loss
         
     def evaluate_model(self, dets, refined_dets, gt_anns):
 
@@ -104,9 +110,12 @@ class BoxRefinementLoss():
         sos_ref_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none')
 
         ### ROTATION MSE
-        dets_rotations = dets[non_zero_gt_indices,6:10]
-        ref_rotations = refined_dets[non_zero_gt_indices,6:10]
-        gt_rotations = gt_anns[non_zero_gt_indices,6:10]
+        #dets_rotations = dets[non_zero_gt_indices,6:10]
+        #ref_rotations = refined_dets[non_zero_gt_indices,6:10]
+        #gt_rotations = gt_anns[non_zero_gt_indices,6:10]
+        dets_rotations = dets[non_zero_gt_indices,6:8]
+        ref_rotations = refined_dets[non_zero_gt_indices,6:8]
+        gt_rotations = gt_anns[non_zero_gt_indices,6:8]
 
         sos_det_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='none')
         sos_ref_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='none')

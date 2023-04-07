@@ -2,7 +2,7 @@ from smoother.io.config_utils import load_config
 from smoother.io.logging_utils import configure_loggings
 from tools.utils.training_utils import TrainingUtils
 from smoother.data.common.tracking_data import SlidingWindowTrackingData, WindowTrackingData
-from smoother.data.common.transformations import ToTensor, CenterOffset, Normalize
+from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
 from smoother.models.pointnet import PointNet
 from smoother.models.transformer import PointTransformer
 import torch
@@ -86,14 +86,16 @@ class SmoothingTrainer():
             size_stdev = transformations_dict["normalize"]["size"]["stdev"]
             rotation_mean = transformations_dict["normalize"]["rotation"]["mean"]
             rotation_stdev = transformations_dict["normalize"]["rotation"]["stdev"]
-            score_mean = transformations_dict["normalize"]["score"]["mean"]
-            score_stdev = transformations_dict["normalize"]["score"]["stdev"]
+            #score_mean = transformations_dict["normalize"]["score"]["mean"]
+            #score_stdev = transformations_dict["normalize"]["score"]["stdev"]
 
-            means = center_mean + size_mean + rotation_mean + score_mean
-            stdev = center_stdev + size_stdev + rotation_stdev + score_stdev
+            means = center_mean + size_mean + rotation_mean #+ score_mean
+            stdev = center_stdev + size_stdev + rotation_stdev #+ score_stdev
             transformations.append(Normalize(means,stdev))
         if transformations_dict["center_offset"]:
             transformations.append(CenterOffset())
+        if transformations_dict["yaw_offset"]:
+            transformations.append(YawOffset())
 
         return transformations
 
@@ -104,7 +106,7 @@ class SmoothingTrainer():
             out_size = self.conf["model"][self.model_type]["out_size"]
             mlp1_sizes = self.conf["model"][self.model_type]["mlp1_sizes"]
             mlp2_sizes = self.conf["model"][self.model_type]["mlp2_sizes"]
-            mlp3_sizes = self.conf["model"][self.model_type]["mlp3_sizes"]
+            mlp3_sizes = self.conf["model"][self.model_type]["mlp3_sizes"]    
             self.model = PointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, mlp3_sizes, self.window_size)
         elif self.model_type == 'transformer':
             input_dim = self.conf["model"][self.model_type]["input_dim"]

@@ -9,9 +9,7 @@ class TrackingResults():
         self.data_path = data_path
 
         # CONFIG SPECIFIC
-        self.feature_dim = self.config["data"]["feature_dim"]
         self.window_size = self.config["data"]["window_size"]
-        self.gt_dim = self.config["data"]["gt_dim"]
 
         self.assoc_metric = self.config["data"]["association_metric"]
         self.gt_assoc_threshold = self.config["data"]["association_thresholds"][self.assoc_metric]
