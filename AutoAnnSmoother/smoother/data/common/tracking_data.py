@@ -89,7 +89,11 @@ class TrackingData():
             #new_dist = torch.norm(gt_center-foi_center)
             #gt_data[-1] = np.exp(-self.score_dist_temp*new_dist)
 
-        return track_data, gt_data
+        #get point clouds
+        track_points = self._get_point_clouds(track)
+
+
+        return track_data, track_points, gt_data
     
     # returs the track object. Useful for retrieving information about the track.
     def get(self, track_index):
@@ -98,6 +102,20 @@ class TrackingData():
     def get_foi_index(self, track_index):
         track = self.data_samples[track_index]
         return track.foi_index
+    
+    def get_pc(self, track_index):
+        track = self.data_samples[track_index]
+        track_points = self._get_point_clouds(track)
+        return track_points
+
+
+    def _get_point_clouds(self, track):
+        root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed'
+        
+        pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
+        pc_path = os.path.join(root_pc_path, pc_name)
+        pc = torch.from_numpy(np.load(pc_path))
+        return pc
 
     def _get_data_samples(self):
         tracking_data = self._format_tracking_data()
@@ -121,6 +139,8 @@ class TrackingData():
                 for box in frame_pred_boxes:
                     box["is_foi"] = self.tracking_results.foi_indexes[sequence_token] == frame_index
                     box["frame_index"] = frame_index
+                    box["frame_token"] = frame_token
+
                     if self.remove_bottom_center:
                         box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
 
@@ -212,7 +232,8 @@ class SlidingWindowTrackingData():
                 yield track, track_gt
 
     def get(self, sliding_track_index):
-        track_index = sliding_track_index % self.window_size
+        track_index = sliding_track_index % len(self.tracking_data)
+        #track_index = sliding_track_index % self.window_size
         return self.tracking_data.get(track_index)
 
         

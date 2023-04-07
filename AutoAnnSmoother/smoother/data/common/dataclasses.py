@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from tools.utils.evaluation import giou3d,calculate_giou3d_matrix, l2
 from smoother.data.loading.loader import convert_to_sine_cosine, convert_to_quaternion
 from pyquaternion import Quaternion
+from scipy.spatial.transform import Rotation as R
 
 @dataclass
 class TrackingBox():
@@ -16,7 +17,8 @@ class TrackingBox():
     rotation: list
     is_foi: bool
     frame_index: int
-    tracking_name: str
+    frame_token: str
+    tracking_name: str  
 
     center_offset: Optional[list]
     yaw_offset: Optional[list]
@@ -30,6 +32,7 @@ class TrackingBox():
             rotation = box_dict["rotation"],
             is_foi = box_dict["is_foi"],
             frame_index = box_dict["frame_index"],
+            frame_token = box_dict["frame_token"],
             tracking_name = box_dict["tracking_name"],
             center_offset = None,
             yaw_offset = None
@@ -41,6 +44,7 @@ class TrackingBox():
                 "size": self.size,
                 "rotation": convert_to_quaternion(self.rotation),
                 "is_foi": self.is_foi,
+                "frame_token":self.frame_token,
                 "frame_index":self.frame_index,
                 "tracking_name":self.tracking_name,
                 "center_offset": self.center_offset,

@@ -53,3 +53,6 @@ class TrackingResults():
     
     def get_foi_index(self, seq_token):
         raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
+    
+    def _get_points_in_frame(self, frame_token):
+        raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResults.")
