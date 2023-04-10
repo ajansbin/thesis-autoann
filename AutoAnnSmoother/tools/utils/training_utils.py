@@ -7,11 +7,10 @@ import tqdm
 
 class TrainingUtils():
 
-    def __init__(self, conf, model_type:str, log_out:str):
+    def __init__(self, conf, log_out:str):
         self.conf = conf
-        self.model_type = model_type
         self.log_out = log_out
-        self.out_size = conf["model"][model_type]["out_size"]
+        self.out_size = 8
         self.loss_params = conf["loss"]
 
 
@@ -58,10 +57,10 @@ class TrainingUtils():
         train_loss_batches = []
         num_batches = len(train_loader)
         
-        for batch_index, (x, y) in enumerate(train_loader, 1):
-            tracks, gt_anns = x.to(self.device), y.to(self.device)
+        for batch_index, (x1, x2, y) in enumerate(train_loader, 1):
+            tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
             optimizer.zero_grad()
-            model_output = model.forward(tracks.clone())
+            model_output = model.forward(tracks, points)
 
             loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
 
@@ -82,9 +81,9 @@ class TrainingUtils():
         total_samples = 0
 
         with torch.no_grad():
-            for batch_index, (x, y) in enumerate(val_loader, 1):
-                tracks, gt_anns = x.to(self.device), y.to(self.device)
-                model_output = model.forward(tracks.clone())
+            for batch_index, (x1, x2, y) in enumerate(val_loader, 1):
+                tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
+                model_output = model.forward(tracks, points)
                 loss = self.loss_fn(model_output.view(-1, self.out_size), gt_anns.float())
                 val_loss_cum += loss.item()
 

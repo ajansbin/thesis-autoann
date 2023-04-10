@@ -3,8 +3,7 @@ from dataclasses import dataclass
 import torch
 import copy
 from typing import Any, Dict, Optional
-from smoother.data.common.utils import calculate_giou3d_matrix, l2
-from smoother.data.loading.loader import convert_to_sine_cosine, convert_to_quaternion
+from smoother.data.common.utils import calculate_giou3d_matrix, l2, convert_to_sine_cosine, convert_to_quaternion
 from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 

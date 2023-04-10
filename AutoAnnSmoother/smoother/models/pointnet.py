@@ -1,11 +1,42 @@
 from torch import nn
 import torch
 
-class PointNet(nn.Module):
-
-    #def __init__(self, input_dim=11, out_size=11, mlp1_sizes=[64,64], mlp2_sizes=[64,128,1024], mlp3_sizes=[512,256], window_size=5):
+class TrackAndPCPointNet(nn.Module):
     def __init__(self, input_dim=9, out_size=8, mlp1_sizes=[64,64], mlp2_sizes=[64,128,1024], mlp3_sizes=[512,256], window_size=5):
-        super(PointNet, self).__init__()
+        super(TrackAndPCPointNet, self).__init__()
+
+        self.pointnet = PointNetEncoder(input_dim, out_size, mlp1_sizes, mlp2_sizes, mlp3_sizes, window_size)
+
+        decoder_input_size = mlp3_sizes[-1]*2
+        self.decoder = TracksAndPCDecoder(decoder_input_size)
+
+    def forward(self, tracks, points):
+        tracks_encoded = self.pointnet(tracks)
+        points_encoded = self.pointnet(points)
+        tp_encoded = torch.stack(tracks_encoded, points_encoded, dim=0)
+        tp_decoded = self.decoder(tp_encoded)
+        return tp_decoded
+
+class TracksAndPCDecoder(nn.Module):
+    def __init__(self, input_dim):
+        super(TracksAndPCDecoder, self).__init__()
+
+        self.fc_center = MLP(input_dim, [128,64,32,3])
+        self.fc_size = MLP(input_dim, [128,64,32,3])
+        self.fc_rotation = MLP(input_dim, [128,64,32,2])
+
+    def forward(self, tp_encoded):
+        center = self.fc_center(tp_encoded)
+        size = self.fc_size(tp_encoded)
+        rotation = self.fc_rotation(tp_encoded)
+        output = torch.cat((center, size, rotation), dim=-1)
+
+        return output
+
+class PointNetEncoder(nn.Module):
+
+    def __init__(self, input_dim=9, out_size=8, mlp1_sizes=[64,64], mlp2_sizes=[64,128,1024], mlp3_sizes=[512,256], window_size=5):
+        super(PointNetEncoder, self).__init__()
         self.input_dim = input_dim
 
         self.mlp1 = MLP(input_dim, mlp1_sizes)
@@ -15,13 +46,11 @@ class PointNet(nn.Module):
         self.t_net1 = TNet(window_size, input_dim, [64,128,1024], [512,256])
         self.t_net2 = TNet(window_size, mlp1_sizes[-1], [64,128,1024], [512,256])
 
-
         kernel_size = (window_size,1)
         stride = 1
         padding = 0
         self.max_pool = nn.MaxPool2d(kernel_size, stride, padding)
         
-
         self.fc_center = MLP(mlp3_sizes[-1], [128,64,32,3])
         self.fc_size = MLP(mlp3_sizes[-1], [128,64,32,3])
         #self.fc_rotation = MLP(mlp3_sizes[-1], [128,64,32,4])
@@ -39,15 +68,7 @@ class PointNet(nn.Module):
         x = self.max_pool(x)
         x = self.mlp3(x)
 
-        center = self.fc_center(x)
-        size = self.fc_size(x)
-        rotation = self.fc_rotation(x)
-        #confidence_score = torch.sigmoid(self.fc_confidence(x))
-
-        #output = torch.cat((center, size, rotation, confidence_score), dim=-1)
-        output = torch.cat((center, size, rotation), dim=-1)
-
-        return output
+        return x
     
 
 class MLP(nn.Module):
@@ -83,13 +104,13 @@ class TNet(nn.Module):
         self.lin = nn.Linear(mlp2_sizes[-1], input_size**2)
 
     def forward(self, x):
-            B, W, F = x.shape
-            x = self.mlp1(x)
-            x = self.max_pool(x)
-            x = self.mlp2(x)
-            x = self.lin(x)
-            x = x.reshape(B,F,F)
-            return x
+        B, W, F = x.shape
+        x = self.mlp1(x)
+        x = self.max_pool(x)
+        x = self.mlp2(x)
+        x = self.lin(x)
+        x = x.reshape(B,F,F)
+        return x
 
     
 class PointNet2(nn.Module):

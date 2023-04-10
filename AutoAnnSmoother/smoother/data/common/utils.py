@@ -7,6 +7,16 @@ from zod.constants import Lidar
 from smoother.data.loading.loader import convert_to_quaternion, convert_to_sine_cosine
 import torch
 
+
+def convert_to_sine_cosine(quaternion: Quaternion):
+    rot_sine = np.sin(quaternion.yaw_pitch_roll[0])
+    rot_cosine = np.cos(quaternion.yaw_pitch_roll[0])
+    return [rot_sine, rot_cosine]
+
+def convert_to_quaternion(sine_cosine:list):
+    q = Quaternion(axis=[0, 0, 1], radians=np.arctan2(sine_cosine[0], sine_cosine[1]))
+    return q
+
 def l2(gt_boxes, pred_box):
     gt_centers = [gt_box["translation"] for gt_box in gt_boxes]
     pred_center = pred_box.center

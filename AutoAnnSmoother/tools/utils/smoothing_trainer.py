@@ -3,32 +3,38 @@ from smoother.io.logging_utils import configure_loggings
 from tools.utils.training_utils import TrainingUtils
 from smoother.data.common.tracking_data import SlidingWindowTrackingData, WindowTrackingData
 from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
-from smoother.models.pointnet import PointNet
-from smoother.models.transformer import PointTransformer
+from smoother.models.pc_track_net import PCTrackNet, TrackNet, PCNet
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
+import os
 
 
 class SmoothingTrainer():
 
-    def __init__(self, tracking_results_path, conf_path, data_path, save_dir, run_name):
+    def __init__(self, tracking_results_path, conf_path, data_path, pc_name, save_dir, run_name):
         print("---Initializing SmoothingTrainer class---")
         self.tracking_results_path = tracking_results_path
         self.conf_path = conf_path
         self.data_path = data_path
+        self.pc_name = pc_name
         self.save_dir = save_dir
         self.run_name = run_name
 
         self.conf = self._get_config(self.conf_path)
+
+        # Update conf with pc path
+        self.conf["data"]["pc_path"] = str(os.path.join('preprocessed', self.pc_name))
+
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
-        self.data_version = self.conf["train"]["data"]["version"]
-        self.split = self.conf["train"]["data"]["split"]
+        self.data_version = self.conf["data"]["version"]
+        self.split = self.conf["data"]["split"]
         self.foi_index = self.conf["data"]["foi_index"] # index in sequence where annotation exist
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
         
-        self.model_type = self.conf["model"]["type"]
+        self.use_pc = self.conf["model"]["use_pc"]
+        self.use_track = self.conf["model"]["use_track"]
 
         self.lr = self.conf["train"]["learning_rate"]
         self.wd = self.conf["train"]["weight_decay"]
@@ -101,25 +107,22 @@ class SmoothingTrainer():
 
     def load_model(self):
         print("---Loading model---")
-        if self.model_type == 'pointnet':
-            input_dim = self.conf["model"][self.model_type]["input_dim"]
-            out_size = self.conf["model"][self.model_type]["out_size"]
-            mlp1_sizes = self.conf["model"][self.model_type]["mlp1_sizes"]
-            mlp2_sizes = self.conf["model"][self.model_type]["mlp2_sizes"]
-            mlp3_sizes = self.conf["model"][self.model_type]["mlp3_sizes"]    
-            self.model = PointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, mlp3_sizes, self.window_size)
-        elif self.model_type == 'transformer':
-            input_dim = self.conf["model"][self.model_type]["input_dim"]
-            out_size = self.conf["model"][self.model_type]["out_size"]
-            mlp_sizes = self.conf["model"][self.model_type]["mlp_sizes"]
-            num_heads = self.conf["model"][self.model_type]["num_heads"]
-            self.model = PointTransformer(input_dim, out_size, mlp1_sizes, num_heads)
+        if self.use_pc and self.use_track:
+            self.model = PCTrackNet(pc_feat_dim=3, track_feat_dim=9)
+        elif self.use_pc:
+            self.model = PCNet(pc_feat_dim=3)
+        elif self.use_track:
+            self.model = TrackNet(track_feat_dim=9)
+        else:
+            raise NotImplementedError("Model without point-cloud nor tracks not available")
+
+
 
     def train(self):
         print("---Starting training---")
 
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr,  weight_decay=self.wd)
-        tu = TrainingUtils(self.conf, self.model_type, self.log_out)
+        tu = TrainingUtils(self.conf, self.log_out)
 
         torch.manual_seed(self.seed)
         size = len(self.data_model)
@@ -144,11 +147,18 @@ class SmoothingTrainer():
         import os
         import json
         # Save to file
-        save_dir_full = os.path.join(self.save_dir, self.model_type)
+        if self.use_pc and self.use_track:
+            model_type = "pc-track"
+        elif self.use_pc:
+            model_type = "pc"
+        elif self.use_track:
+            model_type = "track"
+
+        save_dir_full = os.path.join(self.save_dir,model_type)  
         if not os.path.exists(save_dir_full):
             os.mkdir(save_dir_full)
 
-        model_name = f"{self.model_type}_{self.data_type}_{self.split}"
+        model_name = f"{model_type}_{self.data_type}_{self.split}"
         
         # save model
         model_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_model.pth")

@@ -1,32 +1,19 @@
-### WaymoPointNet ###
+### PCTrackNet ###
 model:
-  type: pointnet # one of [pointnet]
-  pointnet:
-    input_dim: 9 #11 # center + size + rotation + class + temporal encoding # THESE SHOULD NOT BE IN CONFIG
-    out_size: 8 #11
-    feat_size: 1024
-    mlp1_sizes: [64,64,128,512]
-    mlp2_sizes: [128,128]
-    mlp3_sizes: [512,256]
-  transformer:
-    input_dim: 9 #11
-    out_size: 8 #11
-    mlp_sizes: [64,64,128,512]
-    num_heads: 8
+  use_pc: false
+  use_track: true
 
 ### Dataclass ###
 data:
   type: zod # one of [nuscenes, zod]
-  version: mini
-  split: val
-  #feature_dim: 11 #same as input_dim for the model
+  version: full
+  split: train
   foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
-  window_size: 5
+  window_size: 25
   sliding_window: true
-  #gt_dim: 11 # same as out_dim for the model
   association_metric: giou #[giou, l2]
   association_thresholds:
-    giou: -0.5
+    giou: 0.0
     l2: 2
   remove_bottom_center: true # if increases the z dimension by half the height for the detections
 
@@ -37,18 +24,12 @@ data:
     normalize:
       normalize: true
       center:
-        #mean: [-0.7403758818885848, 12.456019891166937, 0.05133675600156881]
-        #stdev: [9.108403177866625, 18.42625430749155, 0.6679415543611777]
         mean: [-1.0408938187128578, 15.676385645189473, -0.5681853294492015]
         stdev: [8.827627848858757, 19.47008377654335, 0.6877734215244837]
       size:
-        #mean:  [0.7958234996382493, 1.9855084779905638, 0.7304498132045052]
-        #stdev: [1.0035098683787815, 2.9601490811966515, 0.9963779296023921]
         mean: [2.5877273679628194, 1.0347822035160879, 0.9536876676924065]
         stdev: [3.1708958713662074, 1.0381670406742867, 1.0549146278354404]
-      rotation:
-        #mean: [-0.1528714150608052, 0.0, 0.0, -0.26734145896719846]
-        #stdev: [0.41135998440020294, 1.0, 1.0, 0.36315544073599504]        
+      rotation:      
         mean: [-0.3136310277276827, -0.013401212689278484]
         stdev: [0.5951111005230132, 0.24225834247964198]
       score:
@@ -57,13 +38,10 @@ data:
 
 ### Training Specific ###
 train:
-  data:
-    version: mini
-    split: val
   learning_rate: 1.0E-5
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 2
+  batch_size: 50
   n_workers: 1
   n_epochs: 20
   seed: 0

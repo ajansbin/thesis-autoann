@@ -7,6 +7,8 @@ import numpy as np
 from smoother.data.common.transformations import CenterOffset, YawOffset, Normalize
 import os
 import copy
+from smoother.data.common.utils import convert_to_sine_cosine, convert_to_quaternion
+from pyquaternion import Quaternion
 
 
 class TrackingData():
@@ -20,6 +22,9 @@ class TrackingData():
         self.assoc_thres = self.tracking_results.assoc_thres
 
         self.remove_bottom_center = self.tracking_results.remove_bottom_center
+
+        self.use_pc = self.tracking_results.config["model"]["use_pc"]
+        self.use_track = self.tracking_results.config["model"]["use_track"]
 
         self.data_samples = list(self._get_data_samples())
         self.max_track_length = 180
@@ -42,30 +47,68 @@ class TrackingData():
 
     def __getitem__(self, index):
         track = self.data_samples[index]
-        foi_data_index = track.foi_index-track.starting_frame_index
+
+        gt_data = self._create_gt_data(track)
+        track_data = self._create_track_data(track)
+        track_data, gt_data = self._apply_transformations(track, track_data, gt_data)
+        if self.use_pc:
+            track_points = self._get_and_pad_track_points(track)
+        else:
+            track_points = torch.tensor([])
+        return track_data, track_points, gt_data
+
+    def _create_track_data(self, track):
+        track_start_index = track.starting_frame_index
+        track_end_index = track_start_index + len(track)
+
+        track_data = [self._get_track_data_entry(i, track, track_start_index, track_end_index) for i in range(self.max_track_length)]
+
+        return track_data
+
+    def _get_track_data_entry(self, i, track, track_start_index, track_end_index):
+        if i < track_start_index or i >= track_end_index:
+            pad_data = [0] * 8 + [i - track.foi_index]
+            return pad_data
+        else:
+            box = track[i - track_start_index]
+            temporal_encoding = [box.frame_index - track.foi_index]
+            rotation = convert_to_sine_cosine(Quaternion(box.rotation))
+            return box.center + box.size + rotation + temporal_encoding
+
+    def _get_and_pad_track_points(self, track):
+        track_points = self._get_point_clouds(track)
+
+        track_start_index = track.starting_frame_index
+        track_end_index = track_start_index + len(track)
+
+        padding_start = track_start_index
+        padding_end = self.max_track_length - track_end_index
+
+        if padding_start > 0:
+            start_padding = torch.zeros((padding_start, *track_points.shape[1:]), dtype=track_points.dtype)
+            track_points = torch.cat([start_padding, track_points], dim=0)
+
+        if padding_end > 0:
+            end_padding = torch.zeros((padding_end, *track_points.shape[1:]), dtype=track_points.dtype)
+            track_points = torch.cat([track_points, end_padding], dim=0)
+
+        return track_points
+
+    def _create_gt_data(self, track):
         if track.has_gt:
             gt_box = track.gt_box
             center = list(gt_box['translation'])
             size = list(gt_box['size'])
-            rotation = list(gt_box['rotation'])
-            target_confidence = [0]#[np.exp(-self.score_dist_temp*gt_box["distance"])]
-            gt_data = center + size + rotation #+ target_confidence
+            rotation = convert_to_sine_cosine(Quaternion(gt_box['rotation']))
+            gt_data = center + size + rotation
         else:
-            #gt_data = [0]*11
-            gt_data = [0]*8
+            gt_data = [0] * 8
 
+        return gt_data
 
+    def _apply_transformations(self, track, track_data, gt_data):
         track_start_index = track.starting_frame_index
-        track_end_index = track.starting_frame_index + len(track)
-        track_data = []
-        for i in range(self.max_track_length):
-            if i < track_start_index or i >= track_end_index:
-                pad_data = [0]*8 + [i-track.foi_index]
-                track_data.append(pad_data)
-            else:
-                box = track[i-track_start_index]
-                temporal_encoding = [box.frame_index - track.foi_index]
-                track_data.append(box.center + box.size + box.rotation + temporal_encoding)
+        track_end_index = track_start_index + len(track)
 
         for i, transformation in enumerate(self.transformations):
             if i == self.center_offset_index:
@@ -80,24 +123,13 @@ class TrackingData():
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
+
             track_data = transformation.transform(track_data)
             if track.has_gt or type(transformation) == ToTensor:
                 gt_data = transformation.transform(gt_data)
 
-        # update target confidence after transformations
-        #if track.has_gt and self.normalize_index is not None:
-            #foi_center = track_data[foi_data_index,0:3]
-            #gt_center = gt_data[0:3]
-            #new_dist = torch.norm(gt_center-foi_center)
-            #gt_data[-1] = np.exp(-self.score_dist_temp*new_dist)
+        return track_data, gt_data
 
-        #get point clouds
-        track_points = self._get_point_clouds(track)
-
-
-        return track_data, track_points, gt_data
-    
-    # returs the track object. Useful for retrieving information about the track.
     def get(self, track_index):
         return self.data_samples[track_index]
     
@@ -110,10 +142,10 @@ class TrackingData():
         track_points = self._get_point_clouds(track)
         return track_points
 
-
     def _get_point_clouds(self, track):
-        root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_full_train'
-        
+        #root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_full_train'
+        root_pc_path = self.tracking_results.config["data"]["pc_path"]
+
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
         pc = torch.from_numpy(np.load(pc_path))
@@ -179,6 +211,9 @@ class WindowTrackingData():
         self.tracking_results = tracking_results
         self.window_start = window_start
         self.window_end = window_end
+        
+        self.use_pc = self.tracking_results.config["model"]["use_pc"]
+        self.use_track = self.tracking_results.config["model"]["use_track"]
 
         if not tracking_data:
             print("Loading data samples")
@@ -198,7 +233,11 @@ class WindowTrackingData():
         end_index = foi_index + self.window_end
 
         wind_track_data = track_data[start_index:end_index+1]
-        wind_point_data = point_data[start_index:end_index+1]
+
+        if self.use_pc:
+            wind_point_data = point_data[start_index:end_index+1]
+        else:
+            wind_point_data = point_data # empty tensor
 
         return wind_track_data, wind_point_data, gt_data
     
@@ -213,33 +252,42 @@ class SlidingWindowTrackingData():
         self.window_size = window_size
         self.transformations = transformations
 
+        self.use_pc = self.tracking_results.config["model"]["use_pc"]
+        self.use_track = self.tracking_results.config["model"]["use_track"]
+
         print("Loading sequences...")
         self.tracking_data = TrackingData(tracking_results, self.transformations)
 
-        print("Loading data samples")
-        self.data = list(self._get_data_samples())
-        print(f"Finished loading {len(self.data)} data samples!")
+        print(f"Finished loading {len(self.tracking_data) * self.window_size} data samples!")
 
     def __len__(self):
-        return len(self.data)
-    
+        return len(self.tracking_data) * self.window_size
+
     def __getitem__(self, index):
-        track_data, point_data, gt_data = self.data[index]
+        track_index = index // self.window_size
+        window_start_index = index % self.window_size - self.window_size + 1
+        window_end_index = window_start_index + self.window_size - 1
 
-        return track_data, point_data, gt_data
+        foi_index = self.tracking_data.get_foi_index(track_index)
 
-    def _get_data_samples(self):
-        for i in range(self.window_size):
-            start_ind = i - self.window_size + 1
-            end_ind = start_ind + self.window_size - 1
-            wind_track_nusc = WindowTrackingData(self.tracking_results,start_ind, end_ind, self.transformations, self.tracking_data)
-            for track, point, track_gt in wind_track_nusc:
-                yield track, point, track_gt
+        track_data, point_data, gt_data = self.tracking_data[track_index]
+
+        start_index = foi_index + window_start_index
+        end_index = foi_index + window_end_index
+
+        wind_track_data = track_data[start_index:end_index+1]
+
+        if self.use_pc:
+            wind_point_data = point_data[start_index:end_index+1]
+        else:
+            wind_point_data = point_data # empty tensor
+
+        return wind_track_data, wind_point_data, gt_data
 
     def get(self, sliding_track_index):
         track_index = sliding_track_index % len(self.tracking_data)
-        #track_index = sliding_track_index % self.window_size
         return self.tracking_data.get(track_index)
+
 
         
 
