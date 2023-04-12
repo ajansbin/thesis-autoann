@@ -12,7 +12,7 @@ parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
 args = parser.parse_args()
 
 
-def bbox_array2nuscenes_format(bbox_array):
+def bbox_array2zod_format(bbox_array):
     translation = bbox_array[:3].tolist()
     size = bbox_array[4:7].tolist()
     size = [size[0], size[1], size[2]]
@@ -65,7 +65,7 @@ def main(name, obj_types, data_folder, result_folder, output_folder):
                 
                 frame_obj_num = len(frame_ids)
                 for i in range(frame_obj_num):
-                    sample_result = bbox_array2nuscenes_format(frame_bboxes[i])
+                    sample_result = bbox_array2zod_format(frame_bboxes[i])
                     sample_result['sample_token'] = sample_token
                     sample_result['tracking_id'] = frame_types[i] + '_' + str(frame_ids[i])
                     sample_result['tracking_name'] = frame_types[i]

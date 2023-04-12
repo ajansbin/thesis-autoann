@@ -167,12 +167,16 @@ class SmoothingInferer():
 
                 for transformation in reversed(self.transformations):
                     if type(transformation) == CenterOffset:
-                        offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
-                        transformation.set_offset(offset)
+                        #offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
+                        #transformation.set_offset(offset)
+                        foi_data = track_object.foi_index
+                        transformation.set_offset(foi_data)
                         transformation.set_start_and_end_index(0, -1)
                     elif type(transformation) == YawOffset:
-                        offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
-                        transformation.set_offset(offset)
+                        #offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
+                        #transformation.set_offset(offset)
+                        foi_data = track_object.foi_index
+                        transformation.set_offset(foi_data)
                         transformation.set_start_and_end_index(0, -1)
                     if type(transformation) == Normalize:
                         transformation.set_start_and_end_index(0, -1)

@@ -1,5 +1,4 @@
 from smoother.io.config_utils import load_config
-from tools.utils.test_utils import Evaluator
 from smoother.data.common.tracking_data import SlidingWindowTrackingData, WindowTrackingData
 from smoother.data.common.transformations import ToTensor, CenterOffset, Normalize
 from smoother.models.pointnet import PointNet
@@ -23,6 +22,7 @@ class SmoothingTester():
         self.save_dir = save_dir
 
         self.conf = self._get_config(self.conf_path)
+
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
         self.data_version = self.conf["test"]["data"]["version"]
         self.split = self.conf["test"]["data"]["split"]
@@ -33,11 +33,6 @@ class SmoothingTester():
         
         self.model_type = self.conf["model"]["type"]
 
-        #self.lr = self.conf["train"]["learning_rate"]
-        #self.wd = self.conf["train"]["weight_decay"]
-        #self.n_epochs = self.conf["train"]["n_epochs"]
-        #self.seed = self.conf["train"]["seed"]
-        #self.train_size = self.conf["train"]["train_size"]
         self.batch_size = self.conf["train"]["batch_size"]
         self.n_workers = self.conf["train"]["n_workers"]
 
@@ -119,11 +114,10 @@ class SmoothingTester():
         #test_dataloader = DataLoader(self.data_model, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
         #device = torch.device("cuda" if torch.cuda.is_available() 
         #                                else "cpu")
-        device = "cpu"
-        self.trained_model.to(device)
+        #device = "cpu"
+        self.trained_model.to(self.device)
 
         #out_size = self.conf["model"][self.model_type]["out_size"]
-        #evaluator = Evaluator(self.conf, self.model_type)
         transformations = self.data_model.tracking_data.transformations
 
         gious = []
@@ -132,17 +126,20 @@ class SmoothingTester():
         count_f = 0
         count_s = 0
         for i, (x, y) in tqdm.tqdm(enumerate(self.data_model)):
-            tracks, gt = x, y
+            track, gt = x, y
 
-            track = self.data_model.get(i)
-            has_gt = track.has_gt
+            track_object = self.data_model.get(i)
+            print(track_object, track)
+            has_gt = track_object.has_gt
 
-            foi_box = track.get_foi_box()
+            foi_box = track_object.get_foi_box()
             temporal_encoding = 0
             foi_box = foi_box.center + foi_box.size + foi_box.rotation + [temporal_encoding]
 
+            refined_track = self.trained_model.forward(track.unsqueeze(0)).squeeze()
+            print('refined', refined_track)
             if has_gt:
-                gt_box = list(track.gt_box['translation']) + list(track.gt_box['size']) + list(track.gt_box['rotation'])
+                gt_box = list(track_object.gt_box['translation']) + list(track_object.gt_box['size']) + list(track.gt_box['rotation'])
         
             for transformation in transformations:
                 if type(transformation) == ToTensor: 
@@ -150,17 +147,24 @@ class SmoothingTester():
 
             for transformation in reversed(transformations):
                 if type(transformation) == CenterOffset:
-                    print(track.offset)
-                    transformation.set_offset(track.offset)
+                    print('offset', track_object.offset)
+                    transformation.set_offset(track_object.offset)
+                    transformation.set_start_and_end_index(0, -1)
+                    
+                if type(transformation) == Normalize:
+                        transformation.set_start_and_end_index(0, -1)
+
                 gt = transformation.untransform(gt)
+                refined_track = transformation.untransform(refined_track)
 
             #print('gt', gt)
             #print('gt_box', gt_box)
             if has_gt:
                 gious.append(giou3d(gt.tolist(), foi_box.tolist()))
-                gious_o.append(giou3d(gt_box, foi_box.tolist()))
-                if gious[-1] < -0.5:
-                    print('error', gious_o[-1])
+                #gious_o.append(giou3d(gt_box, foi_box.tolist()))
+                gious_refined.append(giou3d(refined_track.tolist(), foi_box.tolist()))
+                if gious_refined[-1] < -0.5:
+                    print('error', gious_refined[-1])
                     count_f += 1
                 else:
                     gious.append(giou3d(gt.tolist(), foi_box.tolist()))
@@ -168,5 +172,5 @@ class SmoothingTester():
                     count_s +=1
 
         print('giou', sum(gious)/len(gious))       
-        print('giou_o', sum(gious_o)/len(gious_o))       
+        print('gious_refined', sum(gious_refined)/len(gious_refined))       
         print(count_f, count_s)

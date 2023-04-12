@@ -227,7 +227,6 @@ class BEVBoxAnimation:
         if is_tracks:
             track_idx = self.track_ids.index(track_id)
             col = self._color[track_idx % len(self._color)] if track_id != 'gt' else 'white'
-            #track_idx = self.track_id_colors.index(track_id)
             # Add rotated bounding box
             fig.add_scatter(
                 x=all_coords[:, 0],
@@ -240,6 +239,7 @@ class BEVBoxAnimation:
                 showlegend=False,
             )
         else:
+            col = self._color[class_ind] if track_id != 'gt' else 'white'
             fig.add_scatter(
                 x=all_coords[:, 0],
                 y=all_coords[:, 1],

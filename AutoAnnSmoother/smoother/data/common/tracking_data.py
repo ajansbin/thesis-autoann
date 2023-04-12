@@ -7,7 +7,7 @@ import numpy as np
 from smoother.data.common.transformations import CenterOffset, YawOffset, Normalize
 import os
 import copy
-from smoother.data.common.utils import convert_to_sine_cosine, convert_to_quaternion
+from smoother.data.common.utils import convert_to_sine_cosine
 from pyquaternion import Quaternion
 
 
@@ -34,13 +34,18 @@ class TrackingData():
         self.normalize_index = None
 
         # set center_offset_transformation index for later look-up
-        for i, transformations in enumerate(self.transformations):
-            if type(transformations) == CenterOffset:
+        for i, transformation in enumerate(self.transformations):
+            if self._get_full_class_path(transformation) == self._get_full_class_path(CenterOffset):
                 self.center_offset_index = i
-            if type(transformations) == YawOffset:
+            if self._get_full_class_path(transformation) == self._get_full_class_path(YawOffset):
                 self.yaw_offset_index = i
-            if type(transformations) == Normalize:
+            if self._get_full_class_path(transformation) == self._get_full_class_path(Normalize):
                 self.normalize_index = i
+
+    def _get_full_class_path(self, obj):
+        if isinstance(obj, type):  # If the object is a class, not an instance
+            return f"{obj.__module__}.{obj.__name__}"
+        return f"{obj.__class__.__module__}.{obj.__class__.__name__}"
 
     def __len__(self):
         return len(self.data_samples)
@@ -72,8 +77,7 @@ class TrackingData():
         else:
             box = track[i - track_start_index]
             temporal_encoding = [box.frame_index - track.foi_index]
-            rotation = convert_to_sine_cosine(Quaternion(box.rotation))
-            return box.center + box.size + rotation + temporal_encoding
+            return box.center + box.size + box.rotation + temporal_encoding
 
     def _get_and_pad_track_points(self, track):
         track_points = self._get_point_clouds(track)
@@ -99,8 +103,9 @@ class TrackingData():
             gt_box = track.gt_box
             center = list(gt_box['translation'])
             size = list(gt_box['size'])
-            rotation = convert_to_sine_cosine(Quaternion(gt_box['rotation']))
-            gt_data = center + size + rotation
+            rotation = list(convert_to_sine_cosine(gt_box['rotation']))
+            #target_confidence = [0]#[np.exp(-self.score_dist_temp*gt_box["distance"])]
+            gt_data = center + size + rotation #+ target_confidence
         else:
             gt_data = [0] * 8
 
@@ -178,6 +183,9 @@ class TrackingData():
 
                     if self.remove_bottom_center:
                         box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
+
+                    #convert Quaternion to polar angle representation
+                    box['rotation'] = convert_to_sine_cosine(box['rotation'])
 
                     tracking_box = TrackingBox.from_dict(box)
                     tracking_id = tracking_box.tracking_id

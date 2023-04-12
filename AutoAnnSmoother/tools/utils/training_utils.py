@@ -89,7 +89,7 @@ class TrainingUtils():
 
                 foi_indexes = self._find_foi_indexes(tracks)
                 foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :-1] #removes temporal encoding
-                metrics, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, self.out_size), model_output.view(-1, self.out_size), gt_anns.float())
+                metrics, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, self.out_size), model_output.view(-1, self.out_size), gt_anns.float())                
                 total_samples += n_non_zero
                 for metric, sos in metrics.items():
                     val_metrics[metric] = val_metrics.get(metric,0) + sos.sum()

@@ -17,7 +17,7 @@ def load_prediction(result_path: str):
 
     # Deserialize results and get meta data.
     for sample_token, boxes in tqdm.tqdm(data['results'].items(), leave=True):
-         pred_boxes[sample_token].append(boxes)
+        pred_boxes[sample_token].append(boxes)
 
     meta = data['meta']
 

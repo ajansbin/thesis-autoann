@@ -31,7 +31,7 @@ class TrackingBox():
             rotation = box_dict["rotation"],
             is_foi = box_dict["is_foi"],
             frame_index = box_dict["frame_index"],
-            frame_token = box_dict["frame_token"],
+            frame_token = box_dict["sample_token"],
             tracking_name = box_dict["tracking_name"],
             center_offset = None,
             yaw_offset = None

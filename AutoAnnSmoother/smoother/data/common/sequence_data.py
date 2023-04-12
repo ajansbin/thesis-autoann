@@ -5,6 +5,7 @@ from smoother.data.common.transformations import Transformation, ToTensor
 import torch
 import numpy as np
 from smoother.data.common.transformations import CenterOffset, Normalize
+from smoother.data.loading.loader import convert_to_sine_cosine
 
 
 class SequenceData():
@@ -65,7 +66,10 @@ class SequenceData():
 
                 if self.remove_bottom_center:
                     box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
-
+                
+                #convert Quaternion to polar angle representation
+                box['rotation'] = convert_to_sine_cosine(box['rotation'])
+                
                 tracking_box = TrackingBox.from_dict(box)
                 tracking_id = tracking_box.tracking_id
 

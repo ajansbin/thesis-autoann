@@ -49,6 +49,7 @@ class ZodTrackingResults(TrackingResults):
         print("Loading prediction and ground-truths ...")
         self.pred_boxes, self.meta = self.load_tracking_predictions(self.tracking_results_path)
         self.gt_boxes = self.load_gt_detections()
+        self.gt_frames = self.map_seq_id_to_gt(self.gt_boxes)
 
         self.object_classes = OBJECT_CLASSES
 
@@ -56,8 +57,16 @@ class ZodTrackingResults(TrackingResults):
         return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
-        return load_gt(self.data_path, self.seq_tokens, verbose=True)
+        return load_gt(self.zod, self.seq_tokens, verbose=True)
     
+    def map_seq_id_to_gt(self, gt_boxes):
+        gt_frames = {}
+        for seq_id in gt_boxes:
+            seq = self.zod[seq_id]
+            annotated_frame = os.path.basename(seq.info.get_key_lidar_frame().filepath)
+            gt_frames[seq_id] = annotated_frame
+        return gt_frames
+
     def get_sequence_id_from_index(self, index):
         return self.seq_tokens[index]
     

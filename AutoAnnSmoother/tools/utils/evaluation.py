@@ -6,8 +6,9 @@ from zod.constants import Lidar
 from pyquaternion import Quaternion
 from scipy.spatial import ConvexHull
 from shapely.geometry import Polygon
-from smoother.data.loading.loader import convert_to_quaternion, convert_to_sine_cosine
-
+from smoother.data.common.utils import convert_to_quaternion
+from zod.eval.detection import evaluate_nuscenes_style
+from zod.eval.detection._nuscenes_eval.common.data_classes import EvalBoxes
 
 def l2(gt_boxes, pred_box):
     gt_centers = [gt_box["translation"] for gt_box in gt_boxes]
@@ -22,7 +23,6 @@ def calculate_giou3d_matrix(gts, pred):
         gt_array = list(gt['translation']) + list(gt['size']) + list(gt['rotation'])
         pred_array = list(pred.center) + list(pred.size) + list(pred.rotation)
         giou = giou3d(gt_array, pred_array)
-        #giou = giou3d(gt, pred)
         dists[i] = giou
     return dists
 
@@ -34,22 +34,15 @@ def PolyArea2D(pts):
 def giou3d(gt, pred):
     center = np.array(pred[0:3])
     size = np.array(pred[3:6])
-    #rotation = np.array(pred[6:10])
     rotation = convert_to_quaternion(np.array(pred[6:8]))
 
     gt_center = np.array(gt[0:3])
     gt_size = np.array(gt[3:6])
-    #gt_rotation = np.array(gt[6:10])
     gt_rotation = convert_to_quaternion(np.array(gt[6:8]))
     
-    #gt_center = np.array(gts['translation'])
-    #gt_size = np.array(gts['size'])
-    #gt_rotation = gts['rotation']
-
     box = Box3D(
         center,
         size,
-        #Quaternion(rotation),
         rotation,
         Lidar
     )
@@ -57,7 +50,6 @@ def giou3d(gt, pred):
     gt_box = Box3D(
         gt_center,
         gt_size,
-        #Quaternion(gt_rotation),
         gt_rotation,
         Lidar
     ) 

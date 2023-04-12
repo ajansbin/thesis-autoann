@@ -11,6 +11,7 @@ class SequenceInferer():
         self.max_track_length = self.seq_data.max_track_length
         self.transformations = self.seq_data.transformations
         self.center_offset_index = self.seq_data.center_offset_index
+        self.yaw_offset_index = self.seq_data.yaw_offset_index
         self.normalize_index = self.seq_data.normalize_index
 
     def __len__(self):

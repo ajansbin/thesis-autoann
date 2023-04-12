@@ -4,16 +4,19 @@ from scipy.spatial import ConvexHull
 from pyquaternion import Quaternion
 from zod.data_classes.box import Box3D
 from zod.constants import Lidar
-from smoother.data.loading.loader import convert_to_quaternion, convert_to_sine_cosine
 import torch
 
 
-def convert_to_sine_cosine(quaternion: Quaternion):
-    rot_sine = np.sin(quaternion.yaw_pitch_roll[0])
-    rot_cosine = np.cos(quaternion.yaw_pitch_roll[0])
+def convert_to_sine_cosine(q_elem):
+    q = Quaternion(q_elem)
+    yaw = q.yaw_pitch_roll[0]
+    rot_sine = np.sin(yaw)
+    rot_cosine = np.cos(yaw)
     return [rot_sine, rot_cosine]
+    
 
-def convert_to_quaternion(sine_cosine:list):
+def convert_to_quaternion(sine_cosine):
+    assert len(sine_cosine) == 2
     q = Quaternion(axis=[0, 0, 1], radians=np.arctan2(sine_cosine[0], sine_cosine[1]))
     return q
 
