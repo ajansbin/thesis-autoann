@@ -58,7 +58,7 @@ class ZodTrackingResults(TrackingResults):
     
     def load_gt_detections(self):
         return load_gt(self.zod, self.seq_tokens, verbose=True)
-    
+
     def map_seq_id_to_gt(self, gt_boxes):
         gt_frames = {}
         for seq_id in gt_boxes:
@@ -66,7 +66,7 @@ class ZodTrackingResults(TrackingResults):
             annotated_frame = os.path.basename(seq.info.get_key_lidar_frame().filepath)
             gt_frames[seq_id] = annotated_frame
         return gt_frames
-
+    
     def get_sequence_id_from_index(self, index):
         return self.seq_tokens[index]
     

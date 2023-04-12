@@ -1,10 +1,9 @@
 import tqdm
 from collections import defaultdict
 from smoother.data.common.dataclasses import TrackingBox, Tracklet
-from smoother.data.common.transformations import Transformation, ToTensor
+from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
 import torch
 import numpy as np
-from smoother.data.common.transformations import CenterOffset, YawOffset, Normalize
 import os
 import copy
 from smoother.data.common.utils import convert_to_sine_cosine
@@ -23,8 +22,10 @@ class TrackingData():
 
         self.remove_bottom_center = self.tracking_results.remove_bottom_center
 
-        self.use_pc = self.tracking_results.config["model"]["use_pc"]
-        self.use_track = self.tracking_results.config["model"]["use_track"]
+        self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
+        self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
+
+        self.pc_offset = self.tracking_results.config["data"]["pc_offset"]
 
         self.data_samples = list(self._get_data_samples())
         self.max_track_length = 180
@@ -78,26 +79,7 @@ class TrackingData():
             box = track[i - track_start_index]
             temporal_encoding = [box.frame_index - track.foi_index]
             return box.center + box.size + box.rotation + temporal_encoding
-
-    def _get_and_pad_track_points(self, track):
-        track_points = self._get_point_clouds(track)
-
-        track_start_index = track.starting_frame_index
-        track_end_index = track_start_index + len(track)
-
-        padding_start = track_start_index
-        padding_end = self.max_track_length - track_end_index
-
-        if padding_start > 0:
-            start_padding = torch.zeros((padding_start, *track_points.shape[1:]), dtype=track_points.dtype)
-            track_points = torch.cat([start_padding, track_points], dim=0)
-
-        if padding_end > 0:
-            end_padding = torch.zeros((padding_end, *track_points.shape[1:]), dtype=track_points.dtype)
-            track_points = torch.cat([track_points, end_padding], dim=0)
-
-        return track_points
-
+        
     def _create_gt_data(self, track):
         if track.has_gt:
             gt_box = track.gt_box
@@ -110,6 +92,55 @@ class TrackingData():
             gt_data = [0] * 8
 
         return gt_data
+
+    def _get_and_pad_track_points(self, track):
+        track_points = self._get_point_clouds(track)
+        if self.pc_offset:
+            track_points = self._get_offset_pc(track, track_points)
+
+        track_start_index = track.starting_frame_index
+        track_end_index = track_start_index + len(track)
+        if track_end_index == 181:
+            track_end_index = 180
+
+        # Initialize a tensor with the required dimensions
+        full_track_points = torch.zeros((self.max_track_length, track_points.shape[1], track_points.shape[2] + 1), dtype=torch.float32)
+
+        # Fill in the track_points
+        full_track_points[track_start_index:track_end_index, :, :-1] = track_points[0:track_end_index-track_start_index]
+
+        # Fill in the temporal encoding for all points
+        temporal_encoding = torch.arange(180) - 89
+
+        # Unsqueezing the temporal encoding to match the dimensions of full_track_points
+        temporal_encoding = temporal_encoding.unsqueeze(1).unsqueeze(2)
+        # Adding the temporal encoding as a new column in the last dimension of full_track_points
+        full_track_points[:, :, -1:] = full_track_points[:, :, -1:] + temporal_encoding
+
+        return full_track_points.float()
+
+    
+    def _get_point_clouds(self, track):
+        if "pc_path" in self.tracking_results.config["data"]:
+            root_pc_path = self.tracking_results.config["data"]["pc_path"]
+        else:
+            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_full_train'
+
+        pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
+        pc_path = os.path.join(root_pc_path, pc_name)
+        pc = torch.from_numpy(np.load(pc_path)).float()
+        
+        track_start_index = track.starting_frame_index
+        track_end_index = track_start_index + len(track)
+        #expected_size = track_end_index - track_start_index
+        if pc.shape[0] == 181:
+            pc = pc[:180,:]
+        return pc
+
+    def _get_offset_pc(self, track: Tracklet, track_points: np.ndarray):
+        foi_center = np.array(track.get_foi_box().center)
+        offset_points = track_points - foi_center
+        return offset_points
 
     def _apply_transformations(self, track, track_data, gt_data):
         track_start_index = track.starting_frame_index
@@ -141,20 +172,6 @@ class TrackingData():
     def get_foi_index(self, track_index):
         track = self.data_samples[track_index]
         return track.foi_index
-    
-    def get_pc(self, track_index):
-        track = self.data_samples[track_index]
-        track_points = self._get_point_clouds(track)
-        return track_points
-
-    def _get_point_clouds(self, track):
-        #root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_full_train'
-        root_pc_path = self.tracking_results.config["data"]["pc_path"]
-
-        pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
-        pc_path = os.path.join(root_pc_path, pc_name)
-        pc = torch.from_numpy(np.load(pc_path))
-        return pc
 
     def _get_data_samples(self):
         tracking_data = self._format_tracking_data()
@@ -220,8 +237,8 @@ class WindowTrackingData():
         self.window_start = window_start
         self.window_end = window_end
         
-        self.use_pc = self.tracking_results.config["model"]["use_pc"]
-        self.use_track = self.tracking_results.config["model"]["use_track"]
+        self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
+        self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
 
         if not tracking_data:
             print("Loading data samples")
@@ -260,8 +277,8 @@ class SlidingWindowTrackingData():
         self.window_size = window_size
         self.transformations = transformations
 
-        self.use_pc = self.tracking_results.config["model"]["use_pc"]
-        self.use_track = self.tracking_results.config["model"]["use_track"]
+        self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
+        self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
 
         print("Loading sequences...")
         self.tracking_data = TrackingData(tracking_results, self.transformations)

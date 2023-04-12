@@ -5,8 +5,6 @@ from zod import ZodSequences
 from zod.constants import Lidar, AnnotationProject
 from zod.anno.object import AnnotatedObject
 
-from smoother.data.common.utils import convert_to_sine_cosine
-
 VALID_OBJECTS = ["Vehicle","VulnerableVehicle","Pedestrian"]
 
 def load_gt(zod, scene_tokens, verbose=False):

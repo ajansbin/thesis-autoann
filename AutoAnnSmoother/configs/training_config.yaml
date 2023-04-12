@@ -1,7 +1,16 @@
 ### PCTrackNet ###
 model:
-  use_pc: false
-  use_track: true
+  pc:
+    use_pc: true
+    pc_encoder: pointnet # one of [pointnet]
+    pc_out_size: 256
+  track:
+    use_track: true
+    track_encoder: pointnet # one of [pointnet]
+    track_out_size: 64
+  decoder:
+    name: lstm # one of [pool, lstm, transformer]
+    dec_out_size: 16
 
 ### Dataclass ###
 data:
@@ -18,6 +27,7 @@ data:
   remove_bottom_center: true # if increases the z dimension by half the height for the detections
 
   score_dist_temp: 1
+  pc_offset: true
   transformations:
     center_offset: true
     yaw_offset: false #not implemented yet
@@ -42,7 +52,7 @@ train:
   weight_decay: 1.0E-5
   train_size: 0.8
   batch_size: 50
-  n_workers: 1
+  n_workers: 8
   n_epochs: 20
   seed: 0
 

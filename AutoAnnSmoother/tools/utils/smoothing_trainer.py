@@ -33,8 +33,8 @@ class SmoothingTrainer():
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
         
-        self.use_pc = self.conf["model"]["use_pc"]
-        self.use_track = self.conf["model"]["use_track"]
+        self.use_pc = self.conf["model"]["pc"]["use_pc"]
+        self.use_track = self.conf["model"]["track"]["use_track"]
 
         self.lr = self.conf["train"]["learning_rate"]
         self.wd = self.conf["train"]["weight_decay"]
@@ -104,19 +104,39 @@ class SmoothingTrainer():
             transformations.append(YawOffset())
 
         return transformations
-
+    
     def load_model(self):
         print("---Loading model---")
-        if self.use_pc and self.use_track:
-            self.model = PCTrackNet(pc_feat_dim=3, track_feat_dim=9)
-        elif self.use_pc:
-            self.model = PCNet(pc_feat_dim=3)
-        elif self.use_track:
-            self.model = TrackNet(track_feat_dim=9)
-        else:
-            raise NotImplementedError("Model without point-cloud nor tracks not available")
+        self.use_pc = self.conf["model"]["pc"]["use_pc"]
+        self.use_track = self.conf["model"]["track"]["use_track"]
+
+        pc_encoder = self.conf["model"]["pc"]["pc_encoder"]
+        pc_out_size = self.conf["model"]["pc"]["pc_out_size"]
+        track_encoder = self.conf["model"]["track"]["track_encoder"]
+        track_out_size = self.conf["model"]["track"]["track_out_size"]
+        decoder_name = self.conf["model"]["decoder"]["name"]
+        dec_out_size = self.conf["model"]["decoder"]["dec_out_size"]
+
+        model_class = self._get_model(self.use_pc, self.use_track)
+
+        self.model = model_class(track_encoder=track_encoder, 
+                                    pc_encoder=pc_encoder, 
+                                    decoder=decoder_name, 
+                                    pc_feat_dim=4, 
+                                    track_feat_dim=9, 
+                                    pc_out=pc_out_size, 
+                                    track_out=track_out_size, 
+                                    dec_out=dec_out_size)
 
 
+    def _get_model(self, use_pc, use_track):
+        if use_pc and use_track:
+            return PCTrackNet
+        if use_pc:
+            return PCNet
+        if use_track:
+            return TrackNet
+        raise NotImplementedError("Model without point-cloud nor tracks not available")
 
     def train(self):
         print("---Starting training---")

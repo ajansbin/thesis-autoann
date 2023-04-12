@@ -145,7 +145,7 @@ class Tracklet():
         if box.is_foi:
             self.foi_index = box.frame_index
 
-    def get_foi_box(self):
+    def get_foi_box(self) -> TrackingBox:
         assert self.foi_index is not None, "Error: Track has no foi_index!"
         foi_box = self.boxes[self.foi_index-self.starting_frame_index]
         assert foi_box.is_foi
