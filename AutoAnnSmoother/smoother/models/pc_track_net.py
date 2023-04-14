@@ -192,12 +192,12 @@ class DecoderHeads(nn.Module):
         )
 
     def forward(self, x):
-        center = self.fc_center(x)
-        size = self.fc_size(x)
-        rotation = self.fc_rotation(x)
+        center_out = self.fc_center(x)
+        size_out = self.fc_size(x)
+        rotation_out = self.fc_rotation(x)
 
-        output = torch.cat((center, size, rotation), dim=-1)  # Shape: (B, 8)
-        return output
+        #output = torch.cat((center, size, rotation), dim=-1)  # Shape: (B, 8)
+        return center_out, size_out, rotation_out
 
 class PoolDecoder(nn.Module):
     def __init__(self, in_size, out_size):
@@ -214,8 +214,8 @@ class PoolDecoder(nn.Module):
     def forward(self, x):
         x = self.mlp(x)  # Pass the input through the MLP: (B, W, F)
         x = torch.max(x, 1, keepdim=True)[0].squeeze(1)  # Apply max-pooling along the temporal dimension (W): (B, F)
-        output = self.heads(x)
-        return output
+        center_out, size_out, rotation_out = self.heads(x)
+        return center_out, size_out, rotation_out
         
 class LSTMDecoder(nn.Module):
     def __init__(self, input_size, output_head_size):
@@ -227,8 +227,8 @@ class LSTMDecoder(nn.Module):
     def forward(self, x):
         x, _ = self.lstm(x)  # Shape: (B, W, lstm_hidden_size)
         x = x[:, -1, :]  # Take the last output of LSTM for each batch: (B, lstm_hidden_size)
-        output = self.heads(x)
-        return output
+        center_out, size_out, rotation_out = self.heads(x)
+        return center_out, size_out, rotation_out
 
 class TransformerDecoder(nn.Module):
     def __init__(self, in_size, out_size):
@@ -242,8 +242,8 @@ class TransformerDecoder(nn.Module):
         x = self.transformer(x)
         x = x[-1, :, :]  # Take the last output of the transformer for each batch: (B, F)
 
-        output = self.heads(x)
-        return output
+        center_out, size_out, rotation_out = self.heads(x)
+        return center_out, size_out, rotation_out
 
 
 ### UTILS ###

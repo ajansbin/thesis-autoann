@@ -22,17 +22,15 @@ class BoxRefinementLoss():
             raise NotImplementedError(f"loss {self.loss_type} is not implemented. Please use 'l1', 'iou' or 'giou' instead.")
         return loss_fn
 
-    def l1_loss(self, predictions,gts):
-        centers = predictions[:,:3]
+    def l1_loss(self, center_preds, size_preds, rotation_preds, gts):
         gt_centers = gts[:,:3]
-        center_loss = F.l1_loss(centers,gt_centers, reduction="mean")
+        center_loss = F.l1_loss(center_preds,gt_centers, reduction="mean")
 
-        sizes = predictions[:,3:6]
         gt_sizes = gts[:,3:6]
-        size_loss = F.l1_loss(sizes,gt_sizes, reduction="mean")
+        size_loss = F.l1_loss(size_preds,gt_sizes, reduction="mean")
 
-        rotation_sin = predictions[:,6]
-        rotation_cos = predictions[:,7]
+        rotation_sin = rotation_preds[:,0]
+        rotation_cos = rotation_preds[:,1]
         gt_rotation_sin = gts[:,6]
         gt_rotation_cos = gts[:,7]
 
@@ -40,10 +38,10 @@ class BoxRefinementLoss():
 
         return center_loss, size_loss, rotation_loss
 
-    def iou_loss(self, predictions, gts):
+    def iou_loss(self, center_pred, size_pred, rotation_pred, gts):
         raise NotImplementedError
 
-    def giou_loss(self, predictions, gts):
+    def giou_loss(self, center_pred, size_pred, rotation_pred, gts):
         raise NotImplementedError
 
     def compute_score_loss(self, predictions, gts):
@@ -54,8 +52,8 @@ class BoxRefinementLoss():
         out = loss(m(scores),gt_score)
         return out
     
-    def loss(self, predictions, gts):
-        center_loss, size_loss, rotation_loss = self.loss_fn(predictions, gts)
+    def loss(self, center_preds, size_preds, rotation_preds, gts):
+        center_loss, size_loss, rotation_loss = self.loss_fn(center_preds, size_preds, rotation_preds, gts)
         #score_loss = self.compute_score_loss(predictions,gt)
         center_loss *= self.loss_weights["center"]
         size_loss *= self.loss_weights["size"]

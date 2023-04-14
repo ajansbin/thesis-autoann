@@ -60,9 +60,14 @@ class TrainingUtils():
         for batch_index, (x1, x2, y) in enumerate(train_loader, 1):
             tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
             optimizer.zero_grad()
-            model_output = model.forward(tracks, points)
-
-            loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
+            center_out, size_out, rotation_out = model.forward(tracks, points)
+            
+            loss = self.loss_fn(center_out.view(-1, self.out_size),
+                                size_out.view(-1, self.out_size),
+                                rotation_out.view(-1, self.out_size),
+                                gt_anns.float())
+            
+            #loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
 
             loss.backward()
             optimizer.step()
