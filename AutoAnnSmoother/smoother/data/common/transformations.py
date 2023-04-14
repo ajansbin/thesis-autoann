@@ -72,7 +72,10 @@ class CenterOffset(Transformation):
         return x
     
     def set_offset(self, x:list):
-        self.offset = torch.tensor(x[0:3], dtype=torch.float32)
+        if torch.is_tensor(x):
+            self.offset = x[0:3].clone().detach()
+        else:
+            self.offset = torch.tensor(x[0:3], dtype=torch.float32)
 
     def set_start_and_end_index(self,start_index,end_index):
         self.start_index = start_index
@@ -97,11 +100,14 @@ class YawOffset(Transformation):
         if len(x.shape) > 1:
             x[self.start_index:self.end_index,6:8] = x[self.start_index:self.end_index,6:8] + self.offset        
         else:
-            x[6:8] = x[6:8] - self.offset
+            x[6:8] = x[6:8] + self.offset
         return x
     
     def set_offset(self, x:list):
-        self.offset = torch.tensor(x[6:8], dtype=torch.float32)
+        if torch.is_tensor(x):
+            self.offset = x[6:8].clone().detach()
+        else:
+            self.offset = torch.tensor(x[6:8], dtype=torch.float32)
 
     def set_start_and_end_index(self,start_index,end_index):
         self.start_index = start_index

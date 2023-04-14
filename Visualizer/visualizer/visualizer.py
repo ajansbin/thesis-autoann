@@ -173,7 +173,7 @@ class VisualizeResults():
         gt_box_dict = track.gt_box
         gt_translation = gt_box_dict["translation"]
         gt_size = gt_box_dict["size"]
-        gt_rotation = gt_box_dict["rotation"]
+        gt_rotation = convert_to_quaternion(gt_box_dict["rotation"])
 
         gt_box = Box3D(gt_translation, gt_size, gt_rotation, Lidar.VELODYNE)
         gt_box.convert_to(Camera.FRONT, seq.calibration)
@@ -188,8 +188,9 @@ class VisualizeResults():
 
         track_data.get(track_index).foi_index = frame_track_index + track_obj.starting_frame_index
         track, point, gt = track_data[track_index]
-        x_ref = model.forward(track.unsqueeze(0), point.unsqueeze(0)).squeeze().detach()
-
+        center_out, size_out, rotation_out = model.forward(track.unsqueeze(0),  point.unsqueeze(0))
+        
+        x_ref = torch.cat((center_out.squeeze().detach(), size_out.squeeze().detach(), rotation_out.squeeze().detach()), dim=-1)
         #unnormalize
         for transformation in reversed(self.transformations):
             if type(transformation) == CenterOffset:

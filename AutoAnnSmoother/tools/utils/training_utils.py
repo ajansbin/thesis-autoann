@@ -10,7 +10,9 @@ class TrainingUtils():
     def __init__(self, conf, log_out:str):
         self.conf = conf
         self.log_out = log_out
-        self.out_size = 8
+        self.center_dim = 3
+        self.size_dim = 3
+        self.rotation_dim = 2
         self.loss_params = conf["loss"]
 
 
@@ -62,9 +64,9 @@ class TrainingUtils():
             optimizer.zero_grad()
             center_out, size_out, rotation_out = model.forward(tracks, points)
             
-            loss = self.loss_fn(center_out.view(-1, self.out_size),
-                                size_out.view(-1, self.out_size),
-                                rotation_out.view(-1, self.out_size),
+            loss = self.loss_fn(center_out.view(-1, self.center_dim),
+                                size_out.view(-1, self.size_dim),
+                                rotation_out.view(-1, self.rotation_dim),
                                 gt_anns.float())
             
             #loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
@@ -88,13 +90,18 @@ class TrainingUtils():
         with torch.no_grad():
             for batch_index, (x1, x2, y) in enumerate(val_loader, 1):
                 tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
-                model_output = model.forward(tracks, points)
-                loss = self.loss_fn(model_output.view(-1, self.out_size), gt_anns.float())
+                center_out, size_out, rotation_out = model.forward(tracks, points)
+                loss = self.loss_fn(center_out.view(-1, self.center_dim),
+                                    size_out.view(-1, self.size_dim),
+                                    rotation_out.view(-1, self.rotation_dim),
+                                    gt_anns.float())
                 val_loss_cum += loss.item()
 
                 foi_indexes = self._find_foi_indexes(tracks)
                 foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :-1] #removes temporal encoding
-                metrics, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, self.out_size), model_output.view(-1, self.out_size), gt_anns.float())                
+                box_out = torch.cat((center_out, size_out, rotation_out), dim=-1)
+                out_size = self.center_dim + self.size_dim + self.rotation_dim
+                metrics, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size), box_out.view(-1, out_size), gt_anns.float())                
                 total_samples += n_non_zero
                 for metric, sos in metrics.items():
                     val_metrics[metric] = val_metrics.get(metric,0) + sos.sum()
