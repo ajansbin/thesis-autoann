@@ -31,13 +31,12 @@ class BoxRefinementLoss():
         gt_sizes = gts[:,3:6]
         size_loss = F.l1_loss(sizes,gt_sizes, reduction="mean")
 
-        #rotation = predictions[:,6:10]
-        #gt_rotation = gts[:,6:10]
-        #rotation_loss = F.l1_loss(rotation,gt_rotation, reduction="mean")
+        rotation_sin = predictions[:,6]
+        rotation_cos = predictions[:,7]
+        gt_rotation_sin = gts[:,6]
+        gt_rotation_cos = gts[:,7]
 
-        rotation = predictions[:,6:8]
-        gt_rotation = gts[:,6:8]
-        rotation_loss = torch.mean(self.get_yaw_err(rotation, gt_rotation))
+        rotation_loss = F.l1_loss(rotation_sin,gt_rotation_sin) + F.l1_loss(rotation_cos,gt_rotation_cos)
 
         return center_loss, size_loss, rotation_loss
 
@@ -54,7 +53,7 @@ class BoxRefinementLoss():
         loss = nn.BCELoss()
         out = loss(m(scores),gt_score)
         return out
-
+    '''
     def compute_loss(self, predictions, gts):
         centers = predictions[:,:3]
         gt_centers = gts[:,:3]
@@ -64,14 +63,15 @@ class BoxRefinementLoss():
         gt_sizes = gts[:,3:6]
         size_loss = self.l1_loss(sizes,gt_sizes)
 
-        #rotation = predictions[:,6:10]
-        #gt_rotation = gts[:,6:10]        
-        rotation = predictions[:,6:8]
-        gt_rotation = gts[:,6:8]
+    
+        rotation_sin = predictions[:,6]
+        rotation_cos = predictions[:,7]
+        gt_rotation_sin = gts[:,6]
+        gt_rotation_cos = gts[:,7]
 
-        rotation_loss = self.l1_loss(rotation,gt_rotation)
+        rotation_loss = self.l1_loss(rotation_sin,gt_rotation_sin) + self.l1_loss(rotation_cos,gt_rotation_cos)
         return center_loss, size_loss, rotation_loss
-
+    '''
     def loss(self, predictions, gt):
         center_loss, size_loss, rotation_loss = self.loss_fn(predictions, gt)
         #score_loss = self.compute_score_loss(predictions,gt)
@@ -151,5 +151,6 @@ class BoxRefinementLoss():
         yaws_sincos = yaws_sincos_unsized / torch.norm(yaws_sincos_unsized, dim=1, keepdim=True)
         gt_yaws = torch.atan2(yaws_sincos[:, 0], yaws_sincos[:, 1]).view(-1, 1)
         yaw_err = torch.norm((yaws - gt_yaws + np.pi) % (2*np.pi) - np.pi, dim=1)
+        #yaw_err = torch.norm((yaws - gt_yaws) % (2*np.pi), dim=1)
         
         return yaw_err

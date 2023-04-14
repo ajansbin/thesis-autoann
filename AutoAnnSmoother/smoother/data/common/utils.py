@@ -8,6 +8,9 @@ import torch
 
 
 def convert_to_sine_cosine(q_elem):
+    assert type(q_elem) == list
+    assert len(q_elem) == 4
+
     q = Quaternion(q_elem)
     yaw = q.yaw_pitch_roll[0]
     rot_sine = np.sin(yaw)
@@ -16,6 +19,7 @@ def convert_to_sine_cosine(q_elem):
     
 
 def convert_to_quaternion(sine_cosine):
+    assert type(sine_cosine) == list or type(sine_cosine) == np.ndarray
     assert len(sine_cosine) == 2
     q = Quaternion(axis=[0, 0, 1], radians=np.arctan2(sine_cosine[0], sine_cosine[1]))
     return q
@@ -28,7 +32,7 @@ def l2(gt_boxes, pred_box):
     return dists
 
 def calculate_giou3d_matrix(gts, pred):
-    gt_array = np.array([list(gt['translation']) + list(gt['size']) + list(gt['rotation']) for gt in gts])
+    gt_array = np.array([gt['translation'] + gt['size']+ gt['rotation'] for gt in gts])
     pred_array = np.array(list(pred.center) + list(pred.size) + list(pred.rotation))
     giou = giou3d(gt_array, pred_array)
     return giou

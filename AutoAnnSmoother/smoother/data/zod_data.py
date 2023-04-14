@@ -121,7 +121,10 @@ class ZodTrackingResults(TrackingResults):
     def get_lidar_data_in_frame(self, frame_token, frame_index):
         seq_token = frame_token[0:6]
         seq = self.zod[seq_token]
-        points = seq.info.lidar_frames[Lidar.VELODYNE][frame_index].read()
+        if frame_index == self.get_foi_index(seq_token):
+            points = seq.get_keyframe_lidar(motion_compensated=True)
+        else:
+            points = seq.info.lidar_frames[Lidar.VELODYNE][frame_index].read()
         return points
     
     def get_points_in_frame(self, frame_token, frame_index):

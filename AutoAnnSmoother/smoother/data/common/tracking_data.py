@@ -85,7 +85,8 @@ class TrackingData():
             gt_box = track.gt_box
             center = list(gt_box['translation'])
             size = list(gt_box['size'])
-            rotation = list(convert_to_sine_cosine(gt_box['rotation']))
+            #rotation = list(convert_to_sine_cosine(gt_box['rotation']))
+            rotation = gt_box['rotation']
             #target_confidence = [0]#[np.exp(-self.score_dist_temp*gt_box["distance"])]
             gt_data = center + size + rotation #+ target_confidence
         else:
@@ -220,6 +221,9 @@ class TrackingData():
 
             # Associate ground truth to each track
             gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
+            for gt_box in gt_boxes:
+                gt_box['rotation'] = convert_to_sine_cosine(gt_box['rotation'])
+
             track_ids_filtered_has_gt = defaultdict(None)
             for track_id, track in track_ids_filtered.items():
                 track.associate(gt_boxes)

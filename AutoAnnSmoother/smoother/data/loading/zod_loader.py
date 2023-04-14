@@ -26,9 +26,10 @@ def load_gt(zod, scene_tokens, verbose=False):
 
                 this_box = {
                     "sample_token": seq_id,
-                    "translation": translation,
-                    "size": size,
-                    "rotation": rotation,
+                    "translation": list(translation),
+                    "size": list(size),
+                    #"rotation": convert_to_sine_cosine(rotation),
+                    "rotation": list(rotation.elements),
                     "velocity": [0.0,0.0],
                     #"num_pts":sample_annotation['num_lidar_pts'] + sample_annotation['num_radar_pts'],
                     "detection_name":ann_obj.name,
