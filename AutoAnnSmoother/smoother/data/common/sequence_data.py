@@ -4,8 +4,9 @@ from smoother.data.common.dataclasses import TrackingBox, Tracklet
 from smoother.data.common.transformations import Transformation, ToTensor
 import torch
 import numpy as np
-from smoother.data.common.transformations import CenterOffset, Normalize
-from smoother.data.loading.loader import convert_to_sine_cosine
+from smoother.data.common.transformations import CenterOffset, Normalize, YawOffset
+from smoother.data.common.utils import convert_to_sine_cosine
+import copy
 
 
 class SequenceData():
@@ -16,6 +17,10 @@ class SequenceData():
         self.transformations = transformations
         self.score_dist_temp = self.tracking_results.score_dist_temp
 
+        self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
+        self.data_conf = self.tracking_results.config["data"]
+        self.pc_offset = self.tracking_results.config["data"]["pc_offset"]
+        
         self.assoc_metric = self.tracking_results.assoc_metric
         self.assoc_thres = self.tracking_results.assoc_thres
 
@@ -24,12 +29,23 @@ class SequenceData():
         self.data_samples = list(self._get_data_samples())
         self.max_track_length = 180
 
+        self.center_offset_index = None
+        self.yaw_offset_index = None
+        self.normalize_index = None
+
         # set center_offset_transformation index for later look-up
-        for i, transformations in enumerate(self.transformations):
-            if type(transformations) == CenterOffset:
+        for i, transformation in enumerate(self.transformations):
+            if self._get_full_class_path(transformation) == self._get_full_class_path(CenterOffset):
                 self.center_offset_index = i
-            if type(transformations) == Normalize:
+            if self._get_full_class_path(transformation) == self._get_full_class_path(YawOffset):
+                self.yaw_offset_index = i
+            if self._get_full_class_path(transformation) == self._get_full_class_path(Normalize):
                 self.normalize_index = i
+
+    def _get_full_class_path(self, obj):
+        if isinstance(obj, type):  # If the object is a class, not an instance
+            return f"{obj.__module__}.{obj.__name__}"
+        return f"{obj.__class__.__module__}.{obj.__class__.__name__}"
 
     def __len__(self):
         return len(self.data_samples)
@@ -56,20 +72,23 @@ class SequenceData():
 
         sequence_frames = self.tracking_results.get_frames_in_sequence(self.sequence_id)
         track_ids = {}
+        track_ids = defaultdict(None)
         for frame_index, frame_token in enumerate(sequence_frames):
             frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
             if frame_pred_boxes == []:
-                continue
-            for box in frame_pred_boxes:
+                continue   
+            for b in frame_pred_boxes:
+                box = copy.deepcopy(b)
                 box["is_foi"] = False #self.tracking_results.foi_indexes[self.sequence_id] == frame_index
                 box["frame_index"] = frame_index
+                box["frame_token"] = frame_token
 
                 if self.remove_bottom_center:
                     box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
-                
+
                 #convert Quaternion to polar angle representation
                 box['rotation'] = convert_to_sine_cosine(box['rotation'])
-                
+
                 tracking_box = TrackingBox.from_dict(box)
                 tracking_id = tracking_box.tracking_id
 

@@ -53,27 +53,9 @@ class BoxRefinementLoss():
         loss = nn.BCELoss()
         out = loss(m(scores),gt_score)
         return out
-    '''
-    def compute_loss(self, predictions, gts):
-        centers = predictions[:,:3]
-        gt_centers = gts[:,:3]
-        center_loss = self.l1_loss(centers,gt_centers)
-
-        sizes = predictions[:,3:6]
-        gt_sizes = gts[:,3:6]
-        size_loss = self.l1_loss(sizes,gt_sizes)
-
     
-        rotation_sin = predictions[:,6]
-        rotation_cos = predictions[:,7]
-        gt_rotation_sin = gts[:,6]
-        gt_rotation_cos = gts[:,7]
-
-        rotation_loss = self.l1_loss(rotation_sin,gt_rotation_sin) + self.l1_loss(rotation_cos,gt_rotation_cos)
-        return center_loss, size_loss, rotation_loss
-    '''
-    def loss(self, predictions, gt):
-        center_loss, size_loss, rotation_loss = self.loss_fn(predictions, gt)
+    def loss(self, predictions, gts):
+        center_loss, size_loss, rotation_loss = self.loss_fn(predictions, gts)
         #score_loss = self.compute_score_loss(predictions,gt)
         center_loss *= self.loss_weights["center"]
         size_loss *= self.loss_weights["size"]

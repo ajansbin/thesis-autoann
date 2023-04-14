@@ -9,7 +9,7 @@ model:
     track_encoder: pointnet # one of [pointnet]
     track_out_size: 64
   decoder:
-    name: lstm # one of [pool, lstm, transformer]
+    name: pool # one of [pool, lstm, transformer]
     dec_out_size: 16
 
 ### Dataclass ###
@@ -17,9 +17,8 @@ data:
   type: zod # one of [nuscenes, zod]
   version: full
   split: train
-  foi_index: #20 # index in sequence where annotation exist TO BE REMOVED
   window_size: 25
-  sliding_window: true
+  sliding_window: false
   association_metric: giou #[giou, l2]
   association_thresholds:
     giou: 0.0

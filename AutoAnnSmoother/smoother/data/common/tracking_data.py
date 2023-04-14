@@ -12,11 +12,13 @@ from pyquaternion import Quaternion
 
 class TrackingData():
 
-    def __init__(self, tracking_results, transformations=[]):
+    def __init__(self, tracking_results, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True):
         self.tracking_results = tracking_results
         self.transformations = transformations
-        self.score_dist_temp = self.tracking_results.score_dist_temp
+        self.remove_non_foi_tracks = remove_non_foi_tracks
+        self.remove_non_gt_tracks = remove_non_gt_tracks
 
+        self.score_dist_temp = self.tracking_results.score_dist_temp
         self.assoc_metric = self.tracking_results.assoc_metric
         self.assoc_thres = self.tracking_results.assoc_thres
 
@@ -214,10 +216,13 @@ class TrackingData():
                     track_ids[tracking_id].add_box(tracking_box)
 
             # remove tracking_id which do not include FoI
-            track_ids_filtered = defaultdict(None)
-            for track_id, track in track_ids.items():
-                if track.foi_index is not None:
-                    track_ids_filtered[track_id] = track
+            if self.remove_non_foi_tracks:
+                track_ids_filtered = defaultdict(None)
+                for track_id, track in track_ids.items():
+                    if track.foi_index is not None:
+                        track_ids_filtered[track_id] = track
+            else:
+                track_ids_filtered = copy.deepcopy(track_ids)
 
             # Associate ground truth to each track
             gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
@@ -226,20 +231,28 @@ class TrackingData():
 
             track_ids_filtered_has_gt = defaultdict(None)
             for track_id, track in track_ids_filtered.items():
-                track.associate(gt_boxes)
-                if track.has_gt:
+                if track.foi_index:
+                    track.associate(gt_boxes)
+
+                if not self.remove_non_gt_tracks or track.has_gt:
                     track_ids_filtered_has_gt[track_id] = track
+                else:
+                    track_ids_filtered_has_gt[track_id] = track
+
+
             #seq_tracking_ids[sequence_token] = track_ids_filtered
-            seq_tracking_ids[sequence_token] = track_ids_filtered_has_gt
+            seq_tracking_ids[sequence_token] = copy.deepcopy(track_ids_filtered_has_gt)
         return seq_tracking_ids
     
 
 class WindowTrackingData():
 
-    def __init__(self, tracking_results, window_start, window_end, transformations=[], tracking_data=None):
+    def __init__(self, tracking_results, window_start, window_end, transformations=[], tracking_data=None, remove_non_foi_tracks=True, remove_non_gt_tracks=True):
         self.tracking_results = tracking_results
         self.window_start = window_start
         self.window_end = window_end
+        self.remove_non_foi_tracks = remove_non_foi_tracks
+        self.remove_non_gt_tracks = remove_non_gt_tracks
         
         self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
         self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
@@ -247,7 +260,7 @@ class WindowTrackingData():
         if not tracking_data:
             print("Loading data samples")
 
-        self.tracking_data = TrackingData(tracking_results, transformations) if not tracking_data else tracking_data
+        self.tracking_data = TrackingData(tracking_results, transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks) if not tracking_data else tracking_data
 
         if not tracking_data:
             print(f"Finished loading {len(self.tracking_data)} data samples!")
@@ -261,10 +274,24 @@ class WindowTrackingData():
         start_index = foi_index + self.window_start
         end_index = foi_index + self.window_end
 
+        if start_index < 0:
+            pad_start = -start_index
+            start_index = 0
+        else:
+            pad_start = 0
+
+        if end_index >= len(track_data):
+            pad_end = end_index - len(track_data) + 1
+            end_index = len(track_data) - 1
+        else:
+            pad_end = 0
+
         wind_track_data = track_data[start_index:end_index+1]
+        wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
 
         if self.use_pc:
             wind_point_data = point_data[start_index:end_index+1]
+            wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
         else:
             wind_point_data = point_data # empty tensor
 
@@ -276,16 +303,18 @@ class WindowTrackingData():
 
 class SlidingWindowTrackingData():
 
-    def __init__(self, tracking_results, window_size, transformations=[]):
+    def __init__(self, tracking_results, window_size, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True):
         self.tracking_results = tracking_results
         self.window_size = window_size
         self.transformations = transformations
+        self.remove_non_foi_tracks = remove_non_foi_tracks
+        self.remove_non_gt_tracks = remove_non_gt_tracks
 
         self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
         self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
 
         print("Loading sequences...")
-        self.tracking_data = TrackingData(tracking_results, self.transformations)
+        self.tracking_data = TrackingData(tracking_results, self.transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks)
 
         print(f"Finished loading {len(self.tracking_data) * self.window_size} data samples!")
 
@@ -304,10 +333,24 @@ class SlidingWindowTrackingData():
         start_index = foi_index + window_start_index
         end_index = foi_index + window_end_index
 
+        if start_index < 0:
+            pad_start = -start_index
+            start_index = 0
+        else:
+            pad_start = 0
+
+        if end_index >= len(track_data):
+            pad_end = end_index - len(track_data) + 1
+            end_index = len(track_data) - 1
+        else:
+            pad_end = 0
+
         wind_track_data = track_data[start_index:end_index+1]
+        wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
 
         if self.use_pc:
             wind_point_data = point_data[start_index:end_index+1]
+            wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
         else:
             wind_point_data = point_data # empty tensor
 

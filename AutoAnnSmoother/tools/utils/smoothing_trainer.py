@@ -181,42 +181,10 @@ class SmoothingTrainer():
         model_name = f"{model_type}_{self.data_type}_{self.split}"
         
         # save model
-        model_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_model.pth")
+        model_path = os.path.join(save_dir_full, self.run_name + "_model.pth")
         torch.save(self.trained_model.state_dict(), model_path)
 
-        # save losses
-        losses_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_losses.json")
-        json_object = json.dumps(self.result_dict)
-        with open(losses_path, "w") as outfile:
-            outfile.write(json_object)
-
-        plot_path = os.path.join(save_dir_full, model_name + "_" + self.run_name + "_plot.png")
-        self._plot_results(plot_path)
-
-    def _plot_results(self, save_dir):
-        import matplotlib.pyplot as plt
-        import numpy as np
-
-        def moving_average(a, n=3) :
-            ret = np.cumsum(a, dtype=float)
-            ret[n:] = ret[n:] - ret[:-n]
-            return ret[n - 1:] / n
-        
-        train_losses = self.result_dict["train_losses"]
-        val_losses = self.result_dict["val_losses"]
-
-        window = 100
-        train_loss_ma = moving_average(train_losses, window)
-
-        batches_per_epoch = self.n_train_batches
-        x = range(1,len(train_losses)-window+2)
-        x_val = np.arange(1, len(val_losses)+1) * batches_per_epoch
-
-        plt.plot(x, train_loss_ma, label="Training")
-        plt.plot(x_val, val_losses, label = "Validation")
-        #plt.xlim((200,20000))
-        #plt.ylim((500,4000))
-        plt.xlabel("Batch number")
-        plt.ylabel("Loss")
-        plt.legend(loc= "upper right")
-        plt.savefig(save_dir)
+        # save config
+        conf_path = os.path.join(save_dir_full, self.run_name + "_conf.json")
+        with open(conf_path, "w") as f:
+            json.dump(self.conf, f)

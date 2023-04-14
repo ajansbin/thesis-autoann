@@ -1,7 +1,7 @@
 from smoother.io.config_utils import load_config
 from smoother.data.common.sequence_data import SequenceData
 from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
-from smoother.models.pointnet import PointNet
+from smoother.models.pc_track_net import PCTrackNet, TrackNet, PCNet
 from smoother.models.transformer import PointTransformer
 from tools.utils.inference_utils import WindowInferer, SlidingWindowInferer
 import tqdm
@@ -27,14 +27,7 @@ class SmoothingInferer():
         self.save_dir = save_dir
         self.seq_id = seq_id
 
-
-
         self.conf = self._get_config(self.conf_path)
-        
-        self.conf["data"] = self.conf["data"]["value"]
-        self.conf["train"] = self.conf["train"]["value"]
-        self.conf["test"] = self.conf["test"]["value"]
-        self.conf["model"] = self.conf["model"]["value"]
 
         #print(self.conf["data"].keys())
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
@@ -45,8 +38,6 @@ class SmoothingInferer():
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
         
-        self.model_type = self.conf["model"]["type"]
-
         self.batch_size = self.conf["train"]["batch_size"]
         self.n_workers = self.conf["train"]["n_workers"]
 
@@ -85,7 +76,7 @@ class SmoothingInferer():
         self.data_model = SequenceData(self.tracking_results, self.seq_id, self.transformations)
 
     def _add_transformations(self, transformations_dict):
-        transformations = [ToTensor(self.device)]
+        transformations = [ToTensor()]
 
         if transformations_dict["normalize"]["normalize"]:
             center_mean = transformations_dict["normalize"]["center"]["mean"]
@@ -94,38 +85,56 @@ class SmoothingInferer():
             size_stdev = transformations_dict["normalize"]["size"]["stdev"]
             rotation_mean = transformations_dict["normalize"]["rotation"]["mean"]
             rotation_stdev = transformations_dict["normalize"]["rotation"]["stdev"]
-            score_mean = transformations_dict["normalize"]["score"]["mean"]
-            score_stdev = transformations_dict["normalize"]["score"]["stdev"]
+            #score_mean = transformations_dict["normalize"]["score"]["mean"]
+            #score_stdev = transformations_dict["normalize"]["score"]["stdev"]
 
-            means = center_mean + size_mean + rotation_mean + score_mean
-            stdev = center_stdev + size_stdev + rotation_stdev + score_stdev
-            transformations.append(Normalize(means,stdev, self.device))
+            means = center_mean + size_mean + rotation_mean #+ score_mean
+            stdev = center_stdev + size_stdev + rotation_stdev #+ score_stdev
+            transformations.append(Normalize(means,stdev))
         if transformations_dict["center_offset"]:
             transformations.append(CenterOffset())
+        if transformations_dict["yaw_offset"]:
+            transformations.append(YawOffset())
 
         return transformations
     
     def load_model(self, model_path):
-        print("---Loading trained model---")
-        if self.model_type == 'pointnet':
-            input_dim = self.conf["model"][self.model_type]["input_dim"]
-            out_size = self.conf["model"][self.model_type]["out_size"]
-            mlp1_sizes = self.conf["model"][self.model_type]["mlp1_sizes"]
-            mlp2_sizes = self.conf["model"][self.model_type]["mlp2_sizes"]
-            mlp3_sizes = self.conf["model"][self.model_type]["mlp3_sizes"]
-            self.model = PointNet(input_dim, out_size, mlp1_sizes, mlp2_sizes, mlp3_sizes, self.window_size)
-        elif self.model_type == 'transformer':
-            input_dim = self.conf["model"][self.model_type]["input_dim"]
-            out_size = self.conf["model"][self.model_type]["out_size"]
-            mlp_sizes = self.conf["model"][self.model_type]["mlp_sizes"]
-            num_heads = self.conf["model"][self.model_type]["num_heads"]
-            self.model = PointTransformer(input_dim, out_size, mlp1_sizes, num_heads)
+        print("---Loading model---")
+        self.use_pc = self.conf["model"]["pc"]["use_pc"]
+        self.use_track = self.conf["model"]["track"]["use_track"]
+
+        pc_encoder = self.conf["model"]["pc"]["pc_encoder"]
+        pc_out_size = self.conf["model"]["pc"]["pc_out_size"]
+        track_encoder = self.conf["model"]["track"]["track_encoder"]
+        track_out_size = self.conf["model"]["track"]["track_out_size"]
+        decoder_name = self.conf["model"]["decoder"]["name"]
+        dec_out_size = self.conf["model"]["decoder"]["dec_out_size"]
+
+        model_class = self._get_model(self.use_pc, self.use_track)
+
+        self.model = model_class(track_encoder=track_encoder, 
+                                    pc_encoder=pc_encoder, 
+                                    decoder=decoder_name, 
+                                    pc_feat_dim=4, 
+                                    track_feat_dim=9, 
+                                    pc_out=pc_out_size, 
+                                    track_out=track_out_size, 
+                                    dec_out=dec_out_size)
+
 
         self.trained_model = self.model
         checkpoint = torch.load(model_path)
         self.trained_model.load_state_dict(checkpoint)
         print("---Finished loading trained model---")
 
+    def _get_model(self, use_pc, use_track):
+        if use_pc and use_track:
+            return PCTrackNet
+        if use_pc:
+            return PCNet
+        if use_track:
+            return TrackNet
+        raise NotImplementedError("Model without point-cloud nor tracks not available")
 
     def infer(self):
         print("---Starting inference---")

@@ -148,7 +148,7 @@ class Tracklet():
     def get_foi_box(self) -> TrackingBox:
         assert self.foi_index is not None, "Error: Track has no foi_index!"
         foi_box = self.boxes[self.foi_index-self.starting_frame_index]
-        assert foi_box.is_foi
+        #assert foi_box.is_foi
         return copy.deepcopy(foi_box)
 
     def associate(self, gt_boxes):
