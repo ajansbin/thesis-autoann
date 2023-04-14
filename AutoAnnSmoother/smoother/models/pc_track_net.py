@@ -234,7 +234,8 @@ class TransformerDecoder(nn.Module):
     def __init__(self, in_size, out_size):
         super(TransformerDecoder, self).__init__()
 
-        self.transformer = nn.Transformer(d_model=in_size, nhead=4)
+        t_encoder_layer = nn.TransformerEncoderLayer(d_model=in_size, nhead=8, dim_feedforward=in_size*4)
+        self.transformer = nn.TransformerEncoder(encoder_layer=t_encoder_layer, num_layers=2)
         self.heads = DecoderHeads(in_size, out_size)
 
     def forward(self, x):

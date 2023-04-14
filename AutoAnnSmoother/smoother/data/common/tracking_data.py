@@ -234,9 +234,7 @@ class TrackingData():
                 if track.foi_index:
                     track.associate(gt_boxes)
 
-                if not self.remove_non_gt_tracks: #or track.has_gt:
-                    track_ids_filtered_has_gt[track_id] = track
-                elif track.has_gt:
+                if not self.remove_non_gt_tracks or track.has_gt:
                     track_ids_filtered_has_gt[track_id] = track
 
 

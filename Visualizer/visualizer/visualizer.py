@@ -188,9 +188,13 @@ class VisualizeResults():
 
         track_data.get(track_index).foi_index = frame_track_index + track_obj.starting_frame_index
         track, point, gt = track_data[track_index]
-        center_out, size_out, rotation_out = model.forward(track.unsqueeze(0),  point.unsqueeze(0))
-        
-        x_ref = torch.cat((center_out.squeeze().detach(), size_out.squeeze().detach(), rotation_out.squeeze().detach()), dim=-1)
+        center_out, size_out, rot_out = model.forward(track.unsqueeze(0), point.unsqueeze(0))#.squeeze().detach()
+
+        c_hat = track[0:3] + center_out
+        s_hat = track[3:6] + size_out
+        r_hat = track[6:8] + rot_out
+
+        model_out = torch.cat((c_hat, s_hat, r_hat), dim=-1).squeeze().detach()
         #unnormalize
         for transformation in reversed(self.transformations):
             if type(transformation) == CenterOffset:
@@ -198,10 +202,10 @@ class VisualizeResults():
                 transformation.set_start_and_end_index(0, -1)
             if type(transformation) == Normalize:
                 transformation.set_start_and_end_index(0, -1)
-            x_ref = transformation.untransform(x_ref)
+            model_out = transformation.untransform(model_out)
 
         # create refined box and add to image
-        ref_box = Box3D(x_ref[0:3].numpy(), x_ref[3:6].numpy(), convert_to_quaternion(x_ref[6:8].numpy()), Lidar.VELODYNE)
+        ref_box = Box3D(model_out[0:3].numpy(), model_out[3:6].numpy(), convert_to_quaternion(model_out[6:8].numpy()), Lidar.VELODYNE)
         ref_box.convert_to(Camera.FRONT, seq.calibration)
 
         track_data.get(track_index).foi_index = old_foi_index

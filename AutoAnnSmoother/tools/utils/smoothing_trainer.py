@@ -24,12 +24,12 @@ class SmoothingTrainer():
         self.conf = self._get_config(self.conf_path)
 
         # Update conf with pc path
+        #self.conf["data"]["pc_path"] = '/AutoAnnSmoother/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_mini_train'
         self.conf["data"]["pc_path"] = str(os.path.join('preprocessed', self.pc_name))
 
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
         self.data_version = self.conf["data"]["version"]
         self.split = self.conf["data"]["split"]
-        self.foi_index = self.conf["data"]["foi_index"] # index in sequence where annotation exist
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
         

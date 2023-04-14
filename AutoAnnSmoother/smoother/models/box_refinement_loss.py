@@ -36,6 +36,12 @@ class BoxRefinementLoss():
 
         rotation_loss = F.l1_loss(rotation_sin,gt_rotation_sin) + F.l1_loss(rotation_cos,gt_rotation_cos)
 
+        # print("rot_sin", rotation_sin.tolist())
+        # print("rot_cos", rotation_cos.tolist())
+        # print("gt_rot_sin", gt_rotation_sin.tolist())
+        # print("gt_rot_cos", gt_rotation_cos.tolist())
+        # print("rot_loss", rotation_loss)
+
         return center_loss, size_loss, rotation_loss
 
     def iou_loss(self, center_pred, size_pred, rotation_pred, gts):
