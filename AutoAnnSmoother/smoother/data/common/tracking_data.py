@@ -153,11 +153,13 @@ class TrackingData():
             if i == self.center_offset_index:
                 foi_data = track_data[track.foi_index]
                 transformation.set_offset(foi_data)
+                #if track.center_offset is None:
                 track.set_center_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             if i == self.yaw_offset_index:
                 foi_data = track_data[track.foi_index]
                 transformation.set_offset(foi_data)
+                #if track.yaw_offset is None:
                 track.set_yaw_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
@@ -237,8 +239,6 @@ class TrackingData():
                 if not self.remove_non_gt_tracks or track.has_gt:
                     track_ids_filtered_has_gt[track_id] = track
 
-
-            #seq_tracking_ids[sequence_token] = track_ids_filtered
             seq_tracking_ids[sequence_token] = copy.deepcopy(track_ids_filtered_has_gt)
         return seq_tracking_ids
     
@@ -325,7 +325,6 @@ class SlidingWindowTrackingData():
         window_end_index = window_start_index + self.window_size - 1
 
         foi_index = self.tracking_data.get_foi_index(track_index)
-
         track_data, point_data, gt_data = self.tracking_data[track_index]
 
         start_index = foi_index + window_start_index
@@ -355,7 +354,7 @@ class SlidingWindowTrackingData():
         return wind_track_data, wind_point_data, gt_data
 
     def get(self, sliding_track_index):
-        track_index = sliding_track_index % len(self.tracking_data)
+        track_index = sliding_track_index // self.window_size
         return self.tracking_data.get(track_index)
 
 

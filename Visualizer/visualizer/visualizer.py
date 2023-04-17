@@ -18,13 +18,14 @@ import copy
 
 class VisualizeResults():
 
-    def __init__(self, conf_path, version, split, result_path, data_path, model_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False):
+    def __init__(self, conf_path, version, split, result_path, data_path, model_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False, sw_refine=False):
         self.conf_path = conf_path
         self.version = version
         self.split = split
         self.result_path = result_path
         self.data_path = data_path
         self.model_path = model_path
+        self.sw_refine = sw_refine # TODO: implement this
 
         self.conf = load_config(self.conf_path)
 
@@ -33,7 +34,7 @@ class VisualizeResults():
         self.window_size = self.conf["data"]["window_size"]
         start_ind = int(-(self.window_size-1)/2)
         end_ind = int((self.window_size-1)/2)
-        self.track_data = WindowTrackingData(self.result_data, start_ind, end_ind, self.transformations, remove_non_foi_tracks, remove_non_gt_tracks)
+        self.track_data = WindowTrackingData(self.result_data, start_ind, end_ind, self.transformations, remove_non_foi_tracks=remove_non_foi_tracks, remove_non_gt_tracks=remove_non_gt_tracks)
 
         self.trained_model = self._get_trained_model(self.model_path, self.conf)
     
@@ -190,9 +191,10 @@ class VisualizeResults():
         track, point, gt = track_data[track_index]
         center_out, size_out, rot_out = model.forward(track.unsqueeze(0), point.unsqueeze(0))#.squeeze().detach()
 
-        c_hat = track[0:3] + center_out
-        s_hat = track[3:6] + size_out
-        r_hat = track[6:8] + rot_out
+        mid_wind = track.shape[0] // 2 + 1
+        c_hat = track[mid_wind, 0:3] + center_out
+        s_hat = track[mid_wind, 3:6] + size_out
+        r_hat = track[mid_wind, 6:8] + rot_out
 
         model_out = torch.cat((c_hat, s_hat, r_hat), dim=-1).squeeze().detach()
         #unnormalize
