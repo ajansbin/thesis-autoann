@@ -13,16 +13,16 @@ class_names = [
     'Vehicle']#, 'VulnerableVehicle', 'Pedestrian']
 
 
-def main(data_path:str, version:str, split:str, result_path:str, type:str, config:str, save_path:str, eval_type:str):
+def main(data_path:str, version:str, split:str, result_path:str, type:str, config:str, save_path:str, eval_type:str, anno_path:str):
     conf = load_config(config)
     giou_thres = conf["data"]["association_thresholds"]['giou']
 
-    tracking_results = ZodTrackingResults(result_path, conf, version, split, data_path)
+    tracking_results = ZodTrackingResults(result_path, conf, version, split, anno_path, data_path)
 
     gtsEval, predEval = create_eval_boxes(tracking_results, type)
 
     if eval_type == 'nuscenes':
-        evaluate_nuscenes_style(gtsEval, predEval, verbose=True, output_path=save_path)
+        evaluate_nuscenes_style(gtsEval, predEval, verbose=True, output_path=save_path, verify_coordinate_system=False)
     elif eval_type == 'giou':
         print(mean_giou(gtsEval, predEval, giou_thres))
     elif eval_type == 'fp':
@@ -30,7 +30,7 @@ def main(data_path:str, version:str, split:str, result_path:str, type:str, confi
         print('Number false positives:', fp)
         print('Total number predicted boxes:', len(predEval.all))
     elif eval_type == 'all':
-        evaluate_nuscenes_style(gtsEval, predEval, verbose=True, output_path=save_path)
+        evaluate_nuscenes_style(gtsEval, predEval, verbose=True, output_path=save_path, verify_coordinate_system=False)
         giou, fp = calculate_gious_fp(gtsEval, predEval, giou_thres)
         print('Mean GIoU', sum(giou)/len(giou))
         print('Number false positives:', fp)
@@ -59,7 +59,7 @@ def create_eval_boxes(tracking_results, type):
                 translation=tuple(translation),
                 size=tuple(box['size']),
                 rotation=tuple(box['rotation']),
-                ego_translation = tuple(translation),
+                #ego_translation = tuple(translation),
                 detection_name=name,
                 detection_score=score,
             )
@@ -75,7 +75,7 @@ def create_eval_boxes(tracking_results, type):
                 translation=tuple(box['translation']),
                 size=tuple(box['size']),
                 rotation=tuple(box['rotation']),
-                ego_translation = tuple(box['translation']),
+                #ego_translation = tuple(box['translation']),
                 detection_name=box['detection_name'],
                 detection_score=box['detection_score'],
             )
@@ -135,7 +135,8 @@ if __name__ == '__main__':
     parser.add_argument('--eval-type', type=str, default='detection', choices=['nuscenes', 'giou', 'fp', 'all'])
     parser.add_argument('--config', type=str, default='/home/s0001668/workspace/thesis-autoann/AutoAnnSmoother/configs/training_config.yaml')
     parser.add_argument('--save-dir', type=str, default="/home/s0001668/workspace/storage/smoothing/")
+    parser.add_argument('--anno-path', type=str, default="")
     
     args = parser.parse_args()
 
-    main(args.data_path, args.version, args.split, args.result_path, args.type, args.config, args.save_dir, args.eval_type)
+    main(args.data_path, args.version, args.split, args.result_path, args.type, args.config, args.save_dir, args.eval_type, args.anno_path)

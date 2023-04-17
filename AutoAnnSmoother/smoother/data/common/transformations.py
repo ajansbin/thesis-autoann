@@ -27,21 +27,17 @@ class Normalize(Transformation):
         self.end_index = -1
 
     def transform(self,x:torch.tensor) -> torch.tensor:
-        if x.ndim > 1: #temporal encoding not normalized
+        if x.ndim > 1: #temporal encoding and score not normalized
             x[self.start_index:self.end_index, :-1] = (x[self.start_index:self.end_index,:-1]-self.means)/self.stds
-        elif len(x.shape) > 1:
-            x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]-self.means)/self.stds
         else:
-            x = (x-self.means)/self.stds
+            x[0:-1] = (x[0:-1]-self.means)/self.stds
         return x
 
     def untransform(self,x:torch.tensor) -> torch.tensor:
-        if x.ndim > 1:  #temporal encoding not normalized
+        if x.ndim > 1: #temporal encoding and score not normalized
             x[self.start_index:self.end_index, :-1] = (x[self.start_index:self.end_index,:-1]*self.stds)+self.means
-        elif len(x.shape) > 1:
-             x[self.start_index:self.end_index] = (x[self.start_index:self.end_index,:]*self.stds)+self.means
         else:
-            x = (x*self.stds + self.means)
+            x[0:-1] = (x[0:-1]*self.stds + self.means)
         return x
     
     def set_start_and_end_index(self,start_index,end_index):

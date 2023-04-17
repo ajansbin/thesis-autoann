@@ -12,7 +12,7 @@ import os
 
 class SmoothingTrainer():
 
-    def __init__(self, tracking_results_path, conf_path, data_path, pc_name, save_dir, run_name):
+    def __init__(self, tracking_results_path, conf_path, data_path, pc_name, save_dir, run_name, anno_path):
         print("---Initializing SmoothingTrainer class---")
         self.tracking_results_path = tracking_results_path
         self.conf_path = conf_path
@@ -26,12 +26,14 @@ class SmoothingTrainer():
         # Update conf with pc path
         #self.conf["data"]["pc_path"] = '/AutoAnnSmoother/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_mini_train'
         self.conf["data"]["pc_path"] = str(os.path.join('preprocessed', self.pc_name))
+        self.anno_path = anno_path
 
         self.data_type = self.conf["data"]["type"] # nuscenes / zod
         self.data_version = self.conf["data"]["version"]
         self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
+        self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
         
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
         self.use_track = self.conf["model"]["track"]["use_track"]
@@ -68,7 +70,7 @@ class SmoothingTrainer():
             self.tracking_results = NuscTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
         elif self.data_type == 'zod':
             from smoother.data.zod_data import ZodTrackingResults
-            self.tracking_results = ZodTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
+            self.tracking_results = ZodTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.anno_path, self.data_path)
         else:
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
         
@@ -76,11 +78,11 @@ class SmoothingTrainer():
 
         # Load data model
         if self.sliding_window:
-            self.data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations)
+            self.data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks)
         else:
             start_ind = int(-(self.window_size-1)/2)
             end_ind = int((self.window_size-1)/2)
-            self.data_model = WindowTrackingData(self.tracking_results,start_ind, end_ind, transformations)
+            self.data_model = WindowTrackingData(self.tracking_results,start_ind, end_ind, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks)
 
     def _add_transformations(self, transformations_dict):
         transformations = [ToTensor()]

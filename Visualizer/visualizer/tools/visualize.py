@@ -2,13 +2,13 @@
 
 from visualizer.data.track_data import ZodTrackSequence
 
-def main(data_path:str, track_results:str, save_dir:str, tag:str, seq_ids:str, nr_frames:int, no_tracks:bool, gt:bool, version):
+def main(data_path:str, track_results:str, save_dir:str, tag:str, seq_ids:str, nr_frames:int, no_tracks:bool, gt:bool, anno_path:str, version):
     
     seq_ids = [str(item) for item in seq_ids.split(',')]
     for seq_id in seq_ids:
         print('SEQ', seq_id)
         name = str(seq_id) if tag=='' else str(seq_id) + '_' + tag
-        track_seq = ZodTrackSequence(data_path, track_results, save_dir, name, seq_id, no_tracks, gt, version)
+        track_seq = ZodTrackSequence(data_path, track_results, save_dir, name, seq_id, no_tracks, gt, anno_path, version)
         track_seq.create_lidar_animation(nr_frames)
 
     #track_seq.bev_detections(nr_frames)
@@ -25,8 +25,9 @@ if __name__ == '__main__':
     parser.add_argument('--no-tracks', action='store_false')
     parser.add_argument('--tag', type=str, default="")
     parser.add_argument('--gt', action='store_true', help='show gt on results')
+    parser.add_argument('--anno-path', type=str, default="", help='Path to annotation file')
     parser.add_argument('--version', type=str, default='full')
     
     args = parser.parse_args()
 
-    main(args.data_path, args.track_results, args.save_dir, args.tag, args.seq_id, args.nr_frames, args.no_tracks, args.gt, args.version)
+    main(args.data_path, args.track_results, args.save_dir, args.tag, args.seq_id, args.nr_frames, args.no_tracks, args.gt, args.anno_path, args.version)

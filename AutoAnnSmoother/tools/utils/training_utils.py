@@ -13,6 +13,7 @@ class TrainingUtils():
         self.center_dim = 3
         self.size_dim = 3
         self.rotation_dim = 2
+        self.score_dim = 1
         self.loss_params = conf["loss"]
         self.eval_every = conf["train"]["eval_every"]
 
@@ -63,7 +64,7 @@ class TrainingUtils():
         for batch_index, (x1, x2, y) in enumerate(train_loader, 1):
             tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
             optimizer.zero_grad()
-            center_out, size_out, rotation_out = model.forward(tracks, points)
+            center_out, size_out, rotation_out, score_out = model.forward(tracks, points)
 
             foi_indexes = self._find_foi_indexes(tracks)
             selected_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
@@ -75,6 +76,7 @@ class TrainingUtils():
             loss = self.loss_fn(c_hat.view(-1, self.center_dim),
                                 s_hat.view(-1, self.size_dim),
                                 r_hat.view(-1, self.rotation_dim),
+                                score_out.view(-1, self.score_dim),
                                 gt_anns.float())
             
             #loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
@@ -94,11 +96,12 @@ class TrainingUtils():
         model.eval()
         val_metrics = {}
         total_samples = 0
+        score_metrics = {}
 
         with torch.no_grad():
             for batch_index, (x1, x2, y) in enumerate(val_loader, 1):
                 tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
-                center_out, size_out, rotation_out = model.forward(tracks, points)
+                center_out, size_out, rotation_out, score_out = model.forward(tracks, points)
 
                 foi_indexes = self._find_foi_indexes(tracks)
                 selected_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
@@ -110,20 +113,28 @@ class TrainingUtils():
                 loss = self.loss_fn(c_hat.view(-1, self.center_dim),
                                     s_hat.view(-1, self.size_dim),
                                     r_hat.view(-1, self.rotation_dim),
+                                    score_out.view(-1, self.score_dim),
                                     gt_anns.float())
                 val_loss_cum += loss.item()
                 if epoch % self.eval_every == 0:
                     foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :-1] #removes temporal encoding
                     out_size = self.center_dim + self.size_dim + self.rotation_dim
-                    box_out = torch.cat((c_hat, s_hat, r_hat), dim=-1)
-                    metrics, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size), box_out.view(-1, out_size), gt_anns.float())                
+                    box_out = torch.cat((c_hat, s_hat, r_hat, score_out), dim=-1)
+                    metrics, scores, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size), box_out.view(-1, out_size), gt_anns.float())                
                     total_samples += n_non_zero
                     for metric, sos in metrics.items():
                         val_metrics[metric] = val_metrics.get(metric,0) + sos.sum()
+
+                    for metric, acc in scores.items():
+                        score_metrics[metric] = score_metrics.get(metric, 0) + acc
+                        
         if epoch % self.eval_every == 0:
             for metric, sos in val_metrics.items():
                 val_metrics[metric] = (sos / total_samples) ** (1 / 2)
-
+            
+            for metric, acc in score_metrics.items():
+                val_metrics[metric] = acc / total_samples
+        
         return val_loss_cum, val_metrics
     
     def _find_foi_indexes(self, tracks):

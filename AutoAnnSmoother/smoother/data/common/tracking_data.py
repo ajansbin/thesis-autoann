@@ -90,9 +90,10 @@ class TrackingData():
             #rotation = list(convert_to_sine_cosine(gt_box['rotation']))
             rotation = gt_box['rotation']
             #target_confidence = [0]#[np.exp(-self.score_dist_temp*gt_box["distance"])]
-            gt_data = center + size + rotation #+ target_confidence
+            gt = [1] #has gt indicator
+            gt_data = center + size + rotation + gt
         else:
-            gt_data = [0] * 8
+            gt_data = [0] * 9
 
         return gt_data
 

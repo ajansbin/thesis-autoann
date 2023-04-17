@@ -28,12 +28,13 @@ OBJECT_CLASSES = [
 
 class ZodTrackingResults(TrackingResults):
 
-    def __init__(self, tracking_results_path, config, version, split, data_path="/data/zod", zod=None):
+    def __init__(self, tracking_results_path, config, version, split, anno_path="", data_path="/data/zod", zod=None):
         print("Initializing ZodData class...")
         super(ZodTrackingResults, self).__init__(tracking_results_path, config, version, split, data_path)
         assert os.path.exists(tracking_results_path), 'Error: The result file does not exist!'
         assert version in ['full', 'mini'] 
         self.zod = ZodSequences(data_path, version) if not zod else zod
+        self.anno_path = anno_path
 
         self.assoc_metric = config["data"]["association_metric"]
         self.assoc_thres = config["data"]["association_thresholds"][self.assoc_metric]
@@ -57,7 +58,7 @@ class ZodTrackingResults(TrackingResults):
         return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
-        return load_gt(self.zod, self.seq_tokens, verbose=True)
+        return load_gt(self.zod, self.anno_path, self.seq_tokens, verbose=True)
 
     def map_seq_id_to_gt(self, gt_boxes):
         gt_frames = {}
@@ -121,10 +122,7 @@ class ZodTrackingResults(TrackingResults):
     def get_lidar_data_in_frame(self, frame_token, frame_index):
         seq_token = frame_token[0:6]
         seq = self.zod[seq_token]
-        if frame_index == self.get_foi_index(seq_token):
-            points = seq.get_keyframe_lidar(motion_compensated=True)
-        else:
-            points = seq.info.lidar_frames[Lidar.VELODYNE][frame_index].read()
+        points = seq.info.lidar_frames[Lidar.VELODYNE][frame_index].read()
         return points
     
     def get_points_in_frame(self, frame_token, frame_index):

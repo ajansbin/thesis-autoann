@@ -23,18 +23,26 @@ class BoxRefinementLoss():
         return loss_fn
 
     def l1_loss(self, center_preds, size_preds, rotation_preds, gts):
+
+        has_gt = gts[:, -1]
+
         gt_centers = gts[:,:3]
-        center_loss = F.l1_loss(center_preds,gt_centers, reduction="mean")
+        center_loss = F.l1_loss(center_preds,gt_centers, reduction="none").sum(-1)
 
         gt_sizes = gts[:,3:6]
-        size_loss = F.l1_loss(size_preds,gt_sizes, reduction="mean")
+        size_loss = F.l1_loss(size_preds,gt_sizes, reduction="none").sum(-1)
 
         rotation_sin = rotation_preds[:,0]
         rotation_cos = rotation_preds[:,1]
         gt_rotation_sin = gts[:,6]
         gt_rotation_cos = gts[:,7]
-
-        rotation_loss = F.l1_loss(rotation_sin,gt_rotation_sin) + F.l1_loss(rotation_cos,gt_rotation_cos)
+        rotation_loss = F.l1_loss(rotation_sin,gt_rotation_sin, reduction="none") + F.l1_loss(rotation_cos,gt_rotation_cos, reduction="none")
+        
+        #only compute center, size and rotation loss on boxes with gt
+        n_gt = has_gt.sum()
+        center_loss = torch.mul(center_loss, has_gt).sum() / n_gt
+        size_loss = torch.mul(size_loss, has_gt).sum() / n_gt
+        rotation_loss = torch.mul(rotation_loss, has_gt).sum() / n_gt
 
         # print("rot_sin", rotation_sin.tolist())
         # print("rot_cos", rotation_cos.tolist())
@@ -50,23 +58,20 @@ class BoxRefinementLoss():
     def giou_loss(self, center_pred, size_pred, rotation_pred, gts):
         raise NotImplementedError
 
-    def compute_score_loss(self, predictions, gts):
-        scores = predictions[:,10]
-        gt_score = gts[:,10]
-        m = nn.Sigmoid()
+    def compute_score_loss(self, score_pred, gts):
+        gt_score = gts[:,-1]
         loss = nn.BCELoss()
-        out = loss(m(scores),gt_score)
+        out = loss(score_pred.squeeze(-1),gt_score)
         return out
     
-    def loss(self, center_preds, size_preds, rotation_preds, gts):
+    def loss(self, center_preds, size_preds, rotation_preds, score_pred, gts):
         center_loss, size_loss, rotation_loss = self.loss_fn(center_preds, size_preds, rotation_preds, gts)
-        #score_loss = self.compute_score_loss(predictions,gt)
+        score_loss = self.compute_score_loss(score_pred,gts)
         center_loss *= self.loss_weights["center"]
         size_loss *= self.loss_weights["size"]
         rotation_loss *= self.loss_weights["rotation"]
-        #score_loss *= self.loss_weights["score"]
-        l = center_loss + size_loss + rotation_loss #+ score_loss
-        return center_loss + size_loss + rotation_loss #+ score_loss
+        score_loss *= self.loss_weights["score"]
+        return center_loss + size_loss + rotation_loss + score_loss
         
     def evaluate_model(self, dets, refined_dets, gt_anns):
 
@@ -112,6 +117,17 @@ class BoxRefinementLoss():
         sos_det_rotation = torch.pow(det_yaw_err, 2)
         sos_ref_rotation = torch.pow(ref_yaw_err, 2)
 
+        ### SCORE 
+     
+        gt_score = gt_anns[:,-1]
+        dets_score = torch.where(dets[:,-1]<0.5, 0.0, 1.0)
+        correct_dets = torch.sum(dets_score == gt_score)
+        acc_dets = correct_dets.float() / gt_score.size(0)
+
+        refined_dets = torch.where(refined_dets[:,-1]<0.5, 0.0, 1.0)
+        correct_ref = torch.sum(refined_dets == gt_score)
+        acc_ref = correct_ref.float() / gt_score.size(0)
+        
         return {
             "rmse_dets_center": sos_det_center.sum(-1),
             "rmse_refinement_center": sos_ref_center.sum(-1),
@@ -125,6 +141,9 @@ class BoxRefinementLoss():
             "rmse_ref_x":sos_ref_x,
             "rmse_ref_y":sos_ref_y,
             "rmse_ref_z":sos_ref_z
+        }, {
+            "acc_dets": acc_dets,
+            "acc_ref": acc_ref
         }, n_non_zero
     
 

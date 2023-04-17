@@ -18,7 +18,7 @@ from smoother.data.loading.zod_loader import load_gt
 
 
 class ZodTrackSequence:
-    def __init__(self, data_path, track_path, save_dir, name, seq_id, is_tracks, gt, version='full', zod=None):
+    def __init__(self, data_path, track_path, save_dir, name, seq_id, is_tracks, gt, anno_path, version='full', zod=None):
         
         self.is_tracks = is_tracks
         self.seq_id = seq_id
@@ -28,6 +28,7 @@ class ZodTrackSequence:
         self.tracks = self._load_track_res(track_path)
         
         self.zod = ZodSequences(data_path, version) if not zod else zod
+        self.anno_path = anno_path
         self.frames = self._get_frames_of_sequence()
         self.frameid_to_boxes = self._create_track_and_frame_dict(self.seq_id, self.tracks)
         self.show_gt = gt
@@ -57,7 +58,6 @@ class ZodTrackSequence:
   
         for i, frame in enumerate(frames):
             dets=detections['results'][frame]
-
             for box in dets:
                 center = np.array(box['translation'])
                 size = np.array(box['size'])
@@ -78,7 +78,7 @@ class ZodTrackSequence:
         return frameid_to_boxes
     
     def _load_gt(self): 
-        gt = load_gt(self.zod, [self.seq_id])[self.seq_id]
+        gt = load_gt(self.zod, self.anno_path, [self.seq_id])[self.seq_id]
         frames = self._get_frames_of_sequence()[0:-1]
         gt_boxes = {}
         for i, frame in enumerate(frames):
@@ -86,7 +86,7 @@ class ZodTrackSequence:
             for box in gt:
                 center = np.array(box['translation'])
                 size = np.array(box['size'])
-                orientation = box['rotation']
+                orientation = Quaternion(box['rotation'])
                 coord_frame = Lidar.VELODYNE
                 box3d = Box3D(center, size, orientation, coord_frame)
                 gt_boxes[frame].append((box3d, 'Vehicle', 'gt'))
@@ -123,13 +123,17 @@ class ZodTrackSequence:
 
             #visualize ground truth if key frame or close in time
             #key_frame = os.path.basename(seq.info.get_key_lidar_frame().filepath)
+            lidar_key_frame = seq.info.get_key_lidar_frame()
+            key_frame_id = os.path.basename(lidar_key_frame.filepath)
+
             lid_time = lidar_frame.time
             camera_frame = seq.info.get_key_camera_frame(Anonymization.BLUR, Camera.FRONT)
             cam_time = camera_frame.time
             key_frame = os.path.basename(camera_frame.filepath)
 
             if self.show_gt:
-                if abs(lid_time-cam_time).total_seconds() < 0.08 or frame_id == key_frame:
+                #if abs(lid_time-cam_time).total_seconds() < 0.08 or 
+                if frame_id == key_frame_id:
                     visualize_boxes.extend(self.gt_boxes[frame_id])
             
             bevs.append(np.hstack((pcd.points, pcd.intensity[:, None])))

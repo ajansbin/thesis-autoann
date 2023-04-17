@@ -8,7 +8,7 @@ import torch
 
 
 def convert_to_sine_cosine(q_elem):
-    assert type(q_elem) == list
+    assert type(q_elem) == list or type(q_elem) == np.ndarray
     assert len(q_elem) == 4
 
     q = Quaternion(q_elem)

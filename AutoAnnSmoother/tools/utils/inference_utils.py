@@ -84,7 +84,8 @@ class SequenceInferer():
         if "pc_path" in self.data_conf:
             root_pc_path = self.data_conf["pc_path"]
         else:
-            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_full_train'
+            #root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_full_train'
+            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_mini_train'
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)

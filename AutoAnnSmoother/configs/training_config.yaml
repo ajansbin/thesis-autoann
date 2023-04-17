@@ -24,6 +24,8 @@ data:
     giou: 0.0
     l2: 2
   remove_bottom_center: true # if increases the z dimension by half the height for the detections
+  remove_non_gt_tracks: false
+
 
   score_dist_temp: 1
   pc_offset: true
@@ -50,7 +52,7 @@ train:
   learning_rate: 1.0E-4
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 50
+  batch_size: 4
   n_workers: 8
   n_epochs: 20
   eval_every: 1
