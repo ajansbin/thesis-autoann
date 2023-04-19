@@ -3,8 +3,11 @@ import argparse
 import os
 from os import path as osp
 
+from tools.data_converter import indoor_converter as indoor
+from tools.data_converter import kitti_converter as kitti
+from tools.data_converter import lyft_converter as lyft_converter
 from tools.data_converter import nuscenes_converter as nuscenes_converter
-from tools.data_converter import zod_converter
+#from tools.data_converter import zod_converter
 from tools.data_converter.create_gt_database import (
     GTDatabaseCreater, create_groundtruth_database)
 
@@ -71,25 +74,23 @@ def nuscenes_data_prep(root_path,
             Default: 10
     """
     nuscenes_converter.create_nuscenes_infos(
-        root_path, out_dir, info_prefix, version=version, max_sweeps=max_sweeps)
+        root_path, info_prefix, version=version, max_sweeps=max_sweeps)
 
     if version == 'v1.0-test':
-        info_test_path = osp.join(out_dir, f'{info_prefix}_infos_test.pkl')
+        info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
         nuscenes_converter.export_2d_annotation(
             root_path, info_test_path, version=version)
         return
 
-    info_train_path = osp.join(out_dir, f'{info_prefix}_infos_train.pkl')
-    info_val_path = osp.join(out_dir, f'{info_prefix}_infos_val.pkl')
+    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
+    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
     nuscenes_converter.export_2d_annotation(
         root_path, info_train_path, version=version)
     nuscenes_converter.export_2d_annotation(
         root_path, info_val_path, version=version)
     create_groundtruth_database(dataset_name, root_path, info_prefix,
-                                f'{out_dir}/{info_prefix}_infos_train.pkl',
-                                database_save_path=osp.join(out_dir, f'{info_prefix}_gt_database'),
-                                db_info_save_path=osp.join(out_dir,
-                                    f'{info_prefix}_db_infos_train.pkl'),)
+                                f'{out_dir}/{info_prefix}_infos_train.pkl')
+
 
 def lyft_data_prep(root_path, info_prefix, version, max_sweeps=10):
     """Prepare data related to Lyft dataset.
@@ -205,8 +206,7 @@ def zod_data_prep(root_path,
                   version,
                   out_dir,
                   workers,
-                  max_sweeps=10, 
-                  sequences=False):
+                  max_sweeps=10):
     """Prepare data related to Zenseact Open Dataset (ZOD).
 
     Related data consists of '.pkl' files recording basic infos,
@@ -226,24 +226,22 @@ def zod_data_prep(root_path,
         out_dir,
         info_prefix,
         version=version,
-        max_sweeps=max_sweeps, 
-        sequences=sequences)
+        max_sweeps=max_sweeps)
     info_train_path = osp.join(out_dir, f'{info_prefix}_infos_train.pkl')
     info_val_path = osp.join(out_dir, f'{info_prefix}_infos_val.pkl')
     zod_converter.export_2d_annotation(
-        root_path, info_train_path, version=version, sequences=sequences)
+        root_path, info_train_path, version=version)
     zod_converter.export_2d_annotation(
-        root_path, info_val_path, version=version, sequences=sequences)
-    dataset = 'ZodSequenceDataset' if sequences else 'ZodFramesDataset'
+        root_path, info_val_path, version=version)
     GTDatabaseCreater(
-        dataset,
+        'ZodFramesDataset',
         root_path,
         info_prefix,
         f'{out_dir}/{info_prefix}_infos_train.pkl',
         num_worker=workers,
         database_save_path=osp.join(out_dir, f'{info_prefix}_gt_database'),
         db_info_save_path=osp.join(out_dir,
-                                    f'{info_prefix}_db_infos_train.pkl'),
+                                   f'{info_prefix}_db_infos_train.pkl'),
     ).create()
     # create_groundtruth_database(
     #     "ZodFramesDataset",
@@ -284,20 +282,23 @@ parser.add_argument(
 parser.add_argument(
     '--out-dir',
     type=str,
-    default='./data/nuscenes',
+    default='./data/kitti',
+    required=False,
     help='name of info pkl')
 parser.add_argument('--extra-tag', type=str, default='kitti')
 parser.add_argument(
     '--workers', type=int, default=4, help='number of threads to be used')
-parser.add_argument(
-    '--sequences', 
-    action='store_true',
-    required=False,
-    help='If zod sequences')
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    if args.dataset == 'nuscenes' and args.version != 'v1.0-mini':
+    if args.dataset == 'kitti':
+        kitti_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=args.version,
+            out_dir=args.out_dir,
+            with_plane=args.with_plane)
+    elif args.dataset == 'nuscenes' and args.version != 'v1.0-mini':
         train_version = f'{args.version}-trainval'
         nuscenes_data_prep(
             root_path=args.root_path,
@@ -323,6 +324,47 @@ if __name__ == '__main__':
             dataset_name='NuScenesDataset',
             out_dir=args.out_dir,
             max_sweeps=args.max_sweeps)
+    elif args.dataset == 'lyft':
+        train_version = f'{args.version}-train'
+        lyft_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=train_version,
+            max_sweeps=args.max_sweeps)
+        test_version = f'{args.version}-test'
+        lyft_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=test_version,
+            max_sweeps=args.max_sweeps)
+    elif args.dataset == 'waymo':
+        waymo_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            version=args.version,
+            out_dir=args.out_dir,
+            workers=args.workers,
+            max_sweeps=args.max_sweeps)
+    elif args.dataset == 'scannet':
+        scannet_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            out_dir=args.out_dir,
+            workers=args.workers)
+    elif args.dataset == 's3dis':
+        s3dis_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            out_dir=args.out_dir,
+            workers=args.workers)
+    elif args.dataset == 'sunrgbd':
+        sunrgbd_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            num_points=args.num_points,
+            out_dir=args.out_dir,
+            workers=args.workers,
+        )
     elif args.dataset == 'zod':
         zod_data_prep(
             root_path=args.root_path,
@@ -331,5 +373,4 @@ if __name__ == '__main__':
             out_dir=args.out_dir,
             workers=args.workers,
             max_sweeps=args.max_sweeps,
-            sequences=args.sequences
         )

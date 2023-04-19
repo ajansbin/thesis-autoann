@@ -1,0 +1,4 @@
+*.sif
+work_dirs/
+wandb/
+data/

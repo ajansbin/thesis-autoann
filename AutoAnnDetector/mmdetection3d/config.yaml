@@ -1,0 +1,649 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    bounding_box/class_labels:
+      img_predictions_wandb_delimeter_ground_truth:
+        key: img_predictions_wandb_delimeter_ground_truth
+        type: bounding_box/class_labels
+        value:
+          '-1': Ignore
+          '0': Vehicle
+          '1': VulnerableVehicle
+          '2': Pedestrian
+      img_predictions_wandb_delimeter_predictions:
+        key: img_predictions_wandb_delimeter_predictions
+        type: bounding_box/class_labels
+        value:
+          '-1': Ignore
+          '0': Vehicle
+          '1': VulnerableVehicle
+          '2': Pedestrian
+    cli_version: 0.13.10
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    python_version: 3.8.13
+    start_time: 1677593104.051458
+    t:
+      1:
+      - 1
+      - 5
+      - 37
+      - 38
+      - 41
+      - 53
+      - 55
+      - 60
+      2:
+      - 1
+      - 5
+      - 37
+      - 38
+      - 41
+      - 53
+      - 55
+      - 60
+      3:
+      - 2
+      - 3
+      - 13
+      - 23
+      4: 3.8.13
+      5: 0.13.10
+      8:
+      - 5
+checkpoint_config:
+  desc: null
+  value:
+    interval: 1
+class_names:
+  desc: null
+  value:
+  - Vehicle
+  - VulnerableVehicle
+  - Pedestrian
+data:
+  desc: null
+  value:
+    samples_per_gpu: 32
+    test:
+      ann_file: data/zod/mmdet3d/zod_infos_val.pkl
+      box_type_3d: LiDAR
+      classes:
+      - Vehicle
+      - VulnerableVehicle
+      - Pedestrian
+      data_root: data/zod/
+      modality:
+        use_camera: true
+        use_external: false
+        use_lidar: true
+        use_map: false
+        use_radar: false
+      pipeline:
+      - coord_type: LIDAR
+        file_client_args:
+          backend: disk
+        load_dim: 5
+        type: ZodLoadPointsFromFile
+        use_dim: 5
+      - type: LoadImageFromFile
+      - flip: false
+        img_scale:
+        - 1333
+        - 800
+        pts_scale_ratio: 1
+        transforms:
+        - class_names:
+          - Vehicle
+          - VulnerableVehicle
+          - Pedestrian
+          type: DefaultFormatBundle3D
+          with_label: false
+        - keys:
+          - points
+          type: Collect3D
+        type: MultiScaleFlipAug3D
+      test_mode: true
+      type: ZodFramesDataset
+    train:
+      dataset:
+        ann_file: data/zod/mmdet3d/zod_infos_train.pkl
+        box_type_3d: LiDAR
+        classes:
+        - Vehicle
+        - VulnerableVehicle
+        - Pedestrian
+        data_root: data/zod/
+        modality:
+          use_camera: true
+          use_external: false
+          use_lidar: true
+          use_map: false
+          use_radar: false
+        pipeline:
+        - coord_type: LIDAR
+          file_client_args:
+            backend: disk
+          load_dim: 5
+          type: ZodLoadPointsFromFile
+          use_dim: 5
+        - type: LoadAnnotations3D
+          with_bbox_3d: true
+          with_label_3d: true
+        - point_cloud_range:
+          - -51.2
+          - 0
+          - -5.0
+          - 51.2
+          - 102.4
+          - 3.0
+          type: PointsRangeFilter
+        - point_cloud_range:
+          - -51.2
+          - 0
+          - -5.0
+          - 51.2
+          - 102.4
+          - 3.0
+          type: ObjectRangeFilter
+        - classes:
+          - Vehicle
+          - VulnerableVehicle
+          - Pedestrian
+          type: ObjectNameFilter
+        - type: PointShuffle
+        - class_names:
+          - Vehicle
+          - VulnerableVehicle
+          - Pedestrian
+          type: DefaultFormatBundle3D
+        - keys:
+          - points
+          - gt_bboxes_3d
+          - gt_labels_3d
+          type: Collect3D
+        test_mode: false
+        type: ZodFramesDataset
+      times: 1
+      type: RepeatDataset
+    val:
+      ann_file: data/zod/mmdet3d/zod_infos_val.pkl
+      box_type_3d: LiDAR
+      classes:
+      - Vehicle
+      - VulnerableVehicle
+      - Pedestrian
+      data_root: data/zod/
+      modality:
+        use_camera: true
+        use_external: false
+        use_lidar: true
+        use_map: false
+        use_radar: false
+      pipeline:
+      - coord_type: LIDAR
+        file_client_args:
+          backend: disk
+        load_dim: 5
+        type: ZodLoadPointsFromFile
+        use_dim: 5
+      - type: LoadImageFromFile
+      - flip: false
+        img_scale:
+        - 1333
+        - 800
+        pts_scale_ratio: 1
+        transforms:
+        - class_names:
+          - Vehicle
+          - VulnerableVehicle
+          - Pedestrian
+          type: DefaultFormatBundle3D
+          with_label: false
+        - keys:
+          - points
+          type: Collect3D
+        type: MultiScaleFlipAug3D
+      test_mode: true
+      type: ZodFramesDataset
+    workers_per_gpu: 8
+data_root:
+  desc: null
+  value: data/zod/
+dataset_type:
+  desc: null
+  value: ZodFramesDataset
+dist_params:
+  desc: null
+  value:
+    backend: nccl
+eval_pipeline:
+  desc: null
+  value:
+  - coord_type: LIDAR
+    file_client_args:
+      backend: disk
+    load_dim: 5
+    type: ZodLoadPointsFromFile
+    use_dim: 5
+  - type: LoadImageFromFile
+  - class_names:
+    - Vehicle
+    - VulnerableVehicle
+    - Pedestrian
+    type: DefaultFormatBundle3D
+    with_label: false
+  - keys:
+    - points
+    type: Collect3D
+evaluation:
+  desc: null
+  value:
+    interval: 10
+    pipeline:
+    - coord_type: LIDAR
+      file_client_args:
+        backend: disk
+      load_dim: 5
+      type: ZodLoadPointsFromFile
+      use_dim: 5
+    - type: LoadImageFromFile
+    - class_names:
+      - Vehicle
+      - VulnerableVehicle
+      - Pedestrian
+      type: DefaultFormatBundle3D
+      with_label: false
+    - keys:
+      - points
+      type: Collect3D
+file_client_args:
+  desc: null
+  value:
+    backend: disk
+gpu_ids:
+  desc: null
+  value:
+  - 0
+input_modality:
+  desc: null
+  value:
+    use_camera: true
+    use_external: false
+    use_lidar: true
+    use_map: false
+    use_radar: false
+load_from:
+  desc: null
+  value: null
+log_config:
+  desc: null
+  value:
+    hooks:
+    - type: TextLoggerHook
+    - bbox_score_thr: 0.1
+      init_kwargs:
+        name: centerpoint_zod-full
+        project: centerpoint_od
+      log_checkpoint: false
+      log_checkpoint_metadata: false
+      max_points: 20000
+      num_eval_images: 1
+      type: MMDet3DWandbHook
+      visualize_3d: true
+      visualize_img: true
+    interval: 50
+log_level:
+  desc: null
+  value: INFO
+lr_config:
+  desc: null
+  value:
+    cyclic_times: 1
+    policy: cyclic
+    step_ratio_up: 0.4
+    target_ratio:
+    - 10
+    - 0.0001
+model:
+  desc: null
+  value:
+    pts_backbone:
+      conv_cfg:
+        bias: false
+        type: Conv2d
+      in_channels: 64
+      layer_nums:
+      - 3
+      - 5
+      - 5
+      layer_strides:
+      - 2
+      - 2
+      - 2
+      norm_cfg:
+        eps: 0.001
+        momentum: 0.01
+        type: BN
+      out_channels:
+      - 64
+      - 128
+      - 256
+      type: SECOND
+    pts_bbox_head:
+      bbox_coder:
+        code_size: 7
+        max_num: 500
+        out_size_factor: 4
+        pc_range:
+        - -51.2
+        - 0
+        post_center_range:
+        - -61.2
+        - -10.0
+        - -10.0
+        - 112.4
+        - 61.2
+        - 10.0
+        score_threshold: 0.1
+        type: CenterPointBBoxCoder
+        voxel_size:
+        - 0.2
+        - 0.2
+      common_heads:
+        dim:
+        - 3
+        - 2
+        height:
+        - 1
+        - 2
+        reg:
+        - 2
+        - 2
+        rot:
+        - 2
+        - 2
+      in_channels: 384
+      loss_bbox:
+        loss_weight: 0.25
+        reduction: mean
+        type: L1Loss
+      loss_cls:
+        reduction: mean
+        type: GaussianFocalLoss
+      norm_bbox: true
+      separate_head:
+        final_kernel: 3
+        init_bias: -2.19
+        type: SeparateHead
+      share_conv_channel: 64
+      tasks:
+      - class_names:
+        - Vehicle
+        num_class: 1
+      - class_names:
+        - VulnerableVehicle
+        num_class: 1
+      - class_names:
+        - Pedestrian
+        num_class: 1
+      type: CenterHead
+    pts_middle_encoder:
+      in_channels: 64
+      output_shape:
+      - 512
+      - 512
+      type: PointPillarsScatter
+    pts_neck:
+      in_channels:
+      - 64
+      - 128
+      - 256
+      norm_cfg:
+        eps: 0.001
+        momentum: 0.01
+        type: BN
+      out_channels:
+      - 128
+      - 128
+      - 128
+      type: SECONDFPN
+      upsample_cfg:
+        bias: false
+        type: deconv
+      upsample_strides:
+      - 0.5
+      - 1
+      - 2
+      use_conv_for_no_stride: true
+    pts_voxel_encoder:
+      feat_channels:
+      - 64
+      in_channels: 5
+      legacy: false
+      norm_cfg:
+        eps: 0.001
+        momentum: 0.01
+        type: BN1d
+      point_cloud_range:
+      - -51.2
+      - 0
+      - -5.0
+      - 51.2
+      - 102.4
+      - 3.0
+      type: PillarFeatureNet
+      voxel_size:
+      - 0.2
+      - 0.2
+      - 8
+      with_distance: false
+    pts_voxel_layer:
+      max_num_points: 20
+      max_voxels:
+      - 30000
+      - 40000
+      point_cloud_range:
+      - -51.2
+      - 0
+      - -5.0
+      - 51.2
+      - 102.4
+      - 3.0
+      voxel_size:
+      - 0.2
+      - 0.2
+      - 8
+    test_cfg:
+      pts:
+        max_per_img: 500
+        max_pool_nms: false
+        min_radius:
+        - 4
+        - 12
+        - 10
+        - 1
+        - 0.85
+        - 0.175
+        nms_thr: 0.2
+        nms_type: rotate
+        out_size_factor: 4
+        pc_range:
+        - -51.2
+        - 0
+        post_center_limit_range:
+        - -61.2
+        - -10.0
+        - -10.0
+        - 61.2
+        - 112.4
+        - 10.0
+        post_max_size: 83
+        pre_max_size: 1000
+        score_threshold: 0.1
+        voxel_size:
+        - 0.2
+        - 0.2
+    train_cfg:
+      pts:
+        code_weights:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        dense_reg: 1
+        gaussian_overlap: 0.1
+        grid_size:
+        - 512
+        - 512
+        - 1
+        max_objs: 500
+        min_radius: 2
+        out_size_factor: 4
+        point_cloud_range:
+        - -51.2
+        - 0
+        - -5.0
+        - 51.2
+        - 102.4
+        - 3.0
+        voxel_size:
+        - 0.2
+        - 0.2
+        - 8
+    type: CenterPoint
+momentum_config:
+  desc: null
+  value:
+    cyclic_times: 1
+    policy: cyclic
+    step_ratio_up: 0.4
+    target_ratio:
+    - 0.8947368421052632
+    - 1
+mp_start_method:
+  desc: null
+  value: fork
+opencv_num_threads:
+  desc: null
+  value: 0
+optimizer:
+  desc: null
+  value:
+    lr: 0.0001
+    type: AdamW
+    weight_decay: 0.01
+optimizer_config:
+  desc: null
+  value:
+    grad_clip:
+      max_norm: 35
+      norm_type: 2
+point_cloud_range:
+  desc: null
+  value:
+  - -51.2
+  - 0
+  - -5.0
+  - 51.2
+  - 102.4
+  - 3.0
+resume_from:
+  desc: null
+  value: null
+runner:
+  desc: null
+  value:
+    max_epochs: 20
+    type: EpochBasedRunner
+test_pipeline:
+  desc: null
+  value:
+  - coord_type: LIDAR
+    file_client_args:
+      backend: disk
+    load_dim: 5
+    type: ZodLoadPointsFromFile
+    use_dim: 5
+  - type: LoadImageFromFile
+  - flip: false
+    img_scale:
+    - 1333
+    - 800
+    pts_scale_ratio: 1
+    transforms:
+    - class_names:
+      - Vehicle
+      - VulnerableVehicle
+      - Pedestrian
+      type: DefaultFormatBundle3D
+      with_label: false
+    - keys:
+      - points
+      type: Collect3D
+    type: MultiScaleFlipAug3D
+train_pipeline:
+  desc: null
+  value:
+  - coord_type: LIDAR
+    file_client_args:
+      backend: disk
+    load_dim: 5
+    type: ZodLoadPointsFromFile
+    use_dim: 5
+  - type: LoadAnnotations3D
+    with_bbox_3d: true
+    with_label_3d: true
+  - point_cloud_range:
+    - -51.2
+    - 0
+    - -5.0
+    - 51.2
+    - 102.4
+    - 3.0
+    type: PointsRangeFilter
+  - point_cloud_range:
+    - -51.2
+    - 0
+    - -5.0
+    - 51.2
+    - 102.4
+    - 3.0
+    type: ObjectRangeFilter
+  - classes:
+    - Vehicle
+    - VulnerableVehicle
+    - Pedestrian
+    type: ObjectNameFilter
+  - type: PointShuffle
+  - class_names:
+    - Vehicle
+    - VulnerableVehicle
+    - Pedestrian
+    type: DefaultFormatBundle3D
+  - keys:
+    - points
+    - gt_bboxes_3d
+    - gt_labels_3d
+    type: Collect3D
+voxel_size:
+  desc: null
+  value:
+  - 0.2
+  - 0.2
+  - 8
+work_dir:
+  desc: null
+  value: ./work_dirs/centerpoint_02pillar_second_secfpn_4x8_cyclic_20e_zod
+workflow:
+  desc: null
+  value:
+  - - train
+    - 1

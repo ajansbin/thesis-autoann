@@ -1,26 +1,38 @@
-FROM nvcr.io/nvidia/pytorch:22.08-py3
+ARG PYTORCH="1.6.0"
+ARG CUDA="10.1"
+ARG CUDNN="7"
+ARG MMCV="1.6.0"
+ARG MMDET="2.24.0"
+ARG MMSEG="0.28.0"
+FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
 
-ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6+PTX"
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
 ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
-ENV FORCE_CUDA="1"
 
-ENV TZ=Europe/Stockholm
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# To fix GPG key error when running apt-get update
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
 RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Lock a specific opencv version (bugfix)
-RUN pip install -U opencv-python==4.5.5.64
+# Install MMCV, MMDetection and MMSegmentation
+ARG PYTORCH
+ARG CUDA
+ARG MMCV
+ARG MMDET
+ARG MMSEG
+RUN ["/bin/bash", "-c", "pip install --no-cache-dir mmcv-full==${MMCV} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA//./}/torch${PYTORCH}/index.html"]
+RUN pip install --no-cache-dir mmdet==${MMDET} mmsegmentation==${MMSEG}
 
-# Install our extra dependencies
-RUN pip install openmim zod open3d wandb
-
-# Install MMDetection3D requirements
-# RUN conda clean --all
+# Install MMDetection3D
+RUN conda clean --all
+RUN pip install zod open3d --ignore-installed PyYAML
 COPY . /mmdetection3d
 WORKDIR /mmdetection3d
-RUN mim install --no-cache-dir -e .
+ENV FORCE_CUDA="1"
+RUN pip install -r requirements/build.txt
+RUN pip install --no-cache-dir -e .
 ENV PYTHONPATH='.'

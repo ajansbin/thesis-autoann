@@ -14,7 +14,7 @@ dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = None
 load_from = None
-resume_from = None
+resume_from = None#"/storage/detection/CenterPoint/latest-nusc-full.pth"
 workflow = [('train', 1)]
 
 # disable opencv multithreading to avoid system being overloaded

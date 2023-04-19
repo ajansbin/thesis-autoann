@@ -7,9 +7,9 @@ _base_ = [
 
 # If point cloud range is changed, the models should also change their point
 # cloud range accordingly
-point_cloud_range = [-51.2, 0, -5.0, 51.2, 102.4, 3.0]
+point_cloud_range = [-51.2, 0, -5.0, 51.2, 204.8, 3.0]
 # For ZOD we usually do 3-class detection
-class_names = ['Vehicle', 'VulnerableVehicle', 'Pedestrian']
+class_names = ['Vehicle']
 
 model = dict(
     pts_voxel_layer=dict(point_cloud_range=point_cloud_range),
@@ -178,8 +178,8 @@ log_config = dict(
         dict(
             type='MMDet3DWandbHook',
             init_kwargs=dict(
-                project='mmdet-test',
-                name='centerpoint_zod',
+                project='centerpoint_od',
+                name='zod_full_train_vehicle',
             ),
             log_checkpoint=False,
             log_checkpoint_metadata=False,
@@ -191,4 +191,4 @@ log_config = dict(
         )
     ])
 
-evaluation = dict(interval=10, pipeline=eval_pipeline)
+evaluation = dict(interval=2, pipeline=eval_pipeline)

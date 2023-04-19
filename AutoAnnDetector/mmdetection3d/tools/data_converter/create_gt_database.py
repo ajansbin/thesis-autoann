@@ -217,7 +217,7 @@ def create_groundtruth_database(dataset_class_name,
                 ),
             ],
         )
-    elif dataset_class_name == 'ZodFramesDataset' or dataset_class_name == 'ZodSequenceDataset':
+    elif dataset_class_name == 'ZodFramesDataset':
         dataset_cfg.update(
             use_valid_flag=True,
             pipeline=[
@@ -241,6 +241,7 @@ def create_groundtruth_database(dataset_class_name,
                 ),
             ],
         )
+
     dataset = build_dataset(dataset_cfg)
 
     if database_save_path is None:
@@ -602,7 +603,7 @@ class GTDatabaseCreater:
                         file_client_args=file_client_args)
                 ])
 
-        elif self.dataset_class_name == 'ZodFramesDataset' or self.dataset_class_name == 'ZodSequenceDataset':
+        elif self.dataset_class_name == 'ZodFramesDataset':
             dataset_cfg.update(
                 use_valid_flag=True,
                 pipeline=[

@@ -413,7 +413,7 @@ class ZodFramesDataset(Custom3DDataset):
             det_boxes.add_boxes(frame_id, self._det_to_zod(det, frame_id))
             gt_boxes.add_boxes(frame_id, self._gt_to_zod(idx, frame_id))
 
-        results_dict = zod_eval(gt_boxes, det_boxes)
+        results_dict = zod_eval(gt_boxes, det_boxes, verify_coordinate_system=False)
         print_log(results_dict, logger=logger)
 
         if show or out_dir:
