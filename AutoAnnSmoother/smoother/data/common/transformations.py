@@ -28,14 +28,14 @@ class Normalize(Transformation):
 
     def transform(self,x:torch.tensor) -> torch.tensor:
         if x.ndim > 1: #temporal encoding and score not normalized
-            x[self.start_index:self.end_index, :-1] = (x[self.start_index:self.end_index,:-1]-self.means)/self.stds
+            x[self.start_index:self.end_index] = (x[self.start_index:self.end_index]-self.means)/self.stds
         else:
             x[0:-1] = (x[0:-1]-self.means)/self.stds
         return x
 
     def untransform(self,x:torch.tensor) -> torch.tensor:
         if x.ndim > 1: #temporal encoding and score not normalized
-            x[self.start_index:self.end_index, :-1] = (x[self.start_index:self.end_index,:-1]*self.stds)+self.means
+            x[self.start_index:self.end_index] = (x[self.start_index:self.end_index]*self.stds)+self.means
         else:
             x[0:-1] = (x[0:-1]*self.stds + self.means)
         return x

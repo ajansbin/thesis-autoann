@@ -12,15 +12,15 @@ def load_gt(zod, anno_path, scene_tokens, verbose=False):
 
     if anno_path:
         data = mmcv.load(anno_path)
+    else:
+        print('No annotation path provided, using ZOD Annotation Project: OBJECT_DETECTION')
 
-    for seq_id in tqdm.tqdm(scene_tokens, leave=verbose):        
+    for seq_id in tqdm.tqdm(scene_tokens, position=0, leave=True):        
         if anno_path :
             annotations = data[seq_id]
         else:
-            print('No annotation path provided, using ZOD Annotation Project: OBJECT_DETECTION')
             seq = zod[seq_id]
             annotations = seq.get_annotation(AnnotationProject.OBJECT_DETECTION)
-
         frame_anns = []
         for ann_obj in annotations:
             if anno_path:

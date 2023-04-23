@@ -180,6 +180,7 @@ class DecoderHeads(nn.Module):
             nn.ReLU(),
             nn.Linear(out_size, 3)
         )
+
         self.fc_size = nn.Sequential(
             nn.Linear(in_size, out_size),
             nn.ReLU(),
@@ -197,12 +198,19 @@ class DecoderHeads(nn.Module):
         )
 
     def forward(self, x):
-        center_out = self.fc_center(x)
-        size_out = self.fc_size(x)
-        rotation_out = self.fc_rotation(x)
-        score_out = torch.sigmoid(self.fc_gt(x))
+        '''
+        Inputs: x (B,W,F)
+        '''
 
-        #output = torch.cat((center, size, rotation), dim=-1)  # Shape: (B, 9)
+        # Per frame center/rotation/score
+        center_out = self.fc_center(x)              # (B, W, 3)
+        rotation_out = self.fc_rotation(x)          # (B, W, 2)
+        score_out = torch.sigmoid(self.fc_gt(x))    # (B, W, 1)
+
+        # All frame max pool size
+        x_pooled = torch.max(x, 1)[0] # (B, F)
+        size_out = self.fc_size(x_pooled) # (B, 3)
+
         return center_out, size_out, rotation_out, score_out
 
 class PoolDecoder(nn.Module):
@@ -219,7 +227,6 @@ class PoolDecoder(nn.Module):
 
     def forward(self, x):
         x = self.mlp(x)  # Pass the input through the MLP: (B, W, F)
-        x = torch.max(x, 1, keepdim=True)[0].squeeze(1)  # Apply max-pooling along the temporal dimension (W): (B, F)
         center_out, size_out, rotation_out, score_out = self.heads(x)
         return center_out, size_out, rotation_out, score_out
         
@@ -232,7 +239,6 @@ class LSTMDecoder(nn.Module):
 
     def forward(self, x):
         x, _ = self.lstm(x)  # Shape: (B, W, lstm_hidden_size)
-        x = x[:, -1, :]  # Take the last output of LSTM for each batch: (B, lstm_hidden_size)
         center_out, size_out, rotation_out, score_out = self.heads(x)
         return center_out, size_out, rotation_out, score_out
 
@@ -247,7 +253,7 @@ class TransformerDecoder(nn.Module):
     def forward(self, x):
         x = x.permute(1, 0, 2)  # Transformer requires input shape: (W, B, F)
         x = self.transformer(x)
-        x = x[-1, :, :]  # Take the last output of the transformer for each batch: (B, F)
+        x = x.permute(1, 0, 2)
 
         center_out, size_out, rotation_out, score_out = self.heads(x)
         return center_out, size_out, rotation_out, score_out

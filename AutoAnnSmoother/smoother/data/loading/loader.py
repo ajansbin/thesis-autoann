@@ -16,7 +16,7 @@ def load_prediction(result_path: str):
     assert 'results' in data, 'Error: No field `results` in result file.'
 
     # Deserialize results and get meta data.
-    for sample_token, boxes in tqdm.tqdm(data['results'].items(), leave=True):
+    for sample_token, boxes in tqdm.tqdm(data['results'].items(), position=0, leave=True):
         pred_boxes[sample_token].append(boxes)
 
     meta = data['meta']

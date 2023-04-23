@@ -66,21 +66,27 @@ class TrainingUtils():
             optimizer.zero_grad()
             center_out, size_out, rotation_out, score_out = model.forward(tracks, points)
 
-            foi_indexes = self._find_foi_indexes(tracks)
-            selected_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
+            print(center_out.shape, size_out.shape, rotation_out.shape, score_out.shape)
 
-            c_hat = selected_tracks[:,0:3] + center_out
-            s_hat = selected_tracks[:,3:6] + size_out
-            r_hat = selected_tracks[:,6:8] + rotation_out
+            foi_indexes = self._find_foi_indexes(tracks)
+            foi_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
+            foi_centers = center_out[torch.arange(center_out.size(0)), foi_indexes]
+            foi_rotations = rotation_out[torch.arange(rotation_out.size(0)), foi_indexes]
+            foi_score = score_out[torch.arange(score_out.size(0)), foi_indexes]
+
+
+            print(foi_tracks.shape, foi_centers.shape, foi_rotations.shape)
+
+            c_hat = foi_tracks[:,0:3] + foi_centers
+            s_hat = foi_tracks[:,3:6] + size_out
+            r_hat = foi_tracks[:,6:8] + foi_rotations
 
             loss = self.loss_fn(c_hat.view(-1, self.center_dim),
                                 s_hat.view(-1, self.size_dim),
                                 r_hat.view(-1, self.rotation_dim),
-                                score_out.view(-1, self.score_dim),
+                                foi_score.view(-1, self.score_dim),
                                 gt_anns.float())
             
-            #loss = self.loss_fn(model_output.view(-1, self.out_size) , gt_anns.float())
-
             loss.backward()
             optimizer.step()
             train_loss_batches.append(loss.item())
@@ -95,33 +101,37 @@ class TrainingUtils():
         val_acc_cum = 0
         model.eval()
         val_metrics = {}
-        total_samples = 0
+        total_non_zero = 0
         score_metrics = {}
 
         with torch.no_grad():
             for batch_index, (x1, x2, y) in enumerate(val_loader, 1):
                 tracks, points, gt_anns = x1.to(self.device), x2.to(self.device), y.to(self.device)
+
                 center_out, size_out, rotation_out, score_out = model.forward(tracks, points)
 
                 foi_indexes = self._find_foi_indexes(tracks)
-                selected_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
+                foi_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
+                foi_centers = center_out[torch.arange(center_out.size(0)), foi_indexes]
+                foi_rotations = rotation_out[torch.arange(rotation_out.size(0)), foi_indexes]
+                foi_score = score_out[torch.arange(score_out.size(0)), foi_indexes]
 
-                c_hat = selected_tracks[:,0:3] + center_out
-                s_hat = selected_tracks[:,3:6] + size_out
-                r_hat = selected_tracks[:,6:8] + rotation_out
+                c_hat = foi_tracks[:,0:3] + foi_centers
+                s_hat = foi_tracks[:,3:6] + size_out
+                r_hat = foi_tracks[:,6:8] + foi_rotations
 
                 loss = self.loss_fn(c_hat.view(-1, self.center_dim),
                                     s_hat.view(-1, self.size_dim),
                                     r_hat.view(-1, self.rotation_dim),
-                                    score_out.view(-1, self.score_dim),
+                                    foi_score.view(-1, self.score_dim),
                                     gt_anns.float())
                 val_loss_cum += loss.item()
                 if epoch % self.eval_every == 0:
                     foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :-1] #removes temporal encoding
-                    out_size = self.center_dim + self.size_dim + self.rotation_dim
-                    box_out = torch.cat((c_hat, s_hat, r_hat, score_out), dim=-1)
-                    metrics, scores, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size), box_out.view(-1, out_size), gt_anns.float())                
-                    total_samples += n_non_zero
+                    out_size = self.center_dim + self.size_dim + self.rotation_dim + self.score_dim
+                    box_out = torch.cat((c_hat, s_hat, r_hat, foi_score), dim=-1)
+                    metrics, scores, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size-1), box_out.view(-1, out_size), gt_anns.float())                
+                    total_non_zero += n_non_zero
                     for metric, sos in metrics.items():
                         val_metrics[metric] = val_metrics.get(metric,0) + sos.sum()
 
@@ -130,10 +140,10 @@ class TrainingUtils():
                         
         if epoch % self.eval_every == 0:
             for metric, sos in val_metrics.items():
-                val_metrics[metric] = (sos / total_samples) ** (1 / 2)
+                val_metrics[metric] = (sos / total_non_zero) ** (1 / 2)
             
             for metric, acc in score_metrics.items():
-                val_metrics[metric] = acc / total_samples
+                val_metrics[metric] = acc / len(val_loader.dataset)
         
         return val_loss_cum, val_metrics
     

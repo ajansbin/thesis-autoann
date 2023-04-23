@@ -8,15 +8,17 @@ import os
 import copy
 from smoother.data.common.utils import convert_to_sine_cosine
 from pyquaternion import Quaternion
+import random
 
 
 class TrackingData():
 
-    def __init__(self, tracking_results, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True):
+    def __init__(self, tracking_results, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True, seq_tokens = None):
         self.tracking_results = tracking_results
         self.transformations = transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
+        self.seqs = self.tracking_results.seq_tokens if not seq_tokens else seq_tokens
 
         self.score_dist_temp = self.tracking_results.score_dist_temp
         self.assoc_metric = self.tracking_results.assoc_metric
@@ -75,21 +77,19 @@ class TrackingData():
 
     def _get_track_data_entry(self, i, track, track_start_index, track_end_index):
         if i < track_start_index or i >= track_end_index:
-            pad_data = [0] * 8 + [i - track.foi_index]
+            pad_data = [0] * 8 #+ [i - track.foi_index]
             return pad_data
         else:
             box = track[i - track_start_index]
-            temporal_encoding = [box.frame_index - track.foi_index]
-            return box.center + box.size + box.rotation + temporal_encoding
+            #temporal_encoding = [box.frame_index - track.starting_frame_index]
+            return box.center + box.size + box.rotation #+ temporal_encoding
         
     def _create_gt_data(self, track):
         if track.has_gt:
             gt_box = track.gt_box
             center = list(gt_box['translation'])
             size = list(gt_box['size'])
-            #rotation = list(convert_to_sine_cosine(gt_box['rotation']))
             rotation = gt_box['rotation']
-            #target_confidence = [0]#[np.exp(-self.score_dist_temp*gt_box["distance"])]
             gt = [1] #has gt indicator
             gt_data = center + size + rotation + gt
         else:
@@ -108,18 +108,17 @@ class TrackingData():
             track_end_index = 180
 
         # Initialize a tensor with the required dimensions
-        full_track_points = torch.zeros((self.max_track_length, track_points.shape[1], track_points.shape[2] + 1), dtype=torch.float32)
+        full_track_points = torch.zeros((self.max_track_length, track_points.shape[1], track_points.shape[2]), dtype=torch.float32)
 
         # Fill in the track_points
-        full_track_points[track_start_index:track_end_index, :, :-1] = track_points[0:track_end_index-track_start_index]
-
-        # Fill in the temporal encoding for all points
-        temporal_encoding = torch.arange(180) - 89
-
-        # Unsqueezing the temporal encoding to match the dimensions of full_track_points
-        temporal_encoding = temporal_encoding.unsqueeze(1).unsqueeze(2)
-        # Adding the temporal encoding as a new column in the last dimension of full_track_points
-        full_track_points[:, :, -1:] = full_track_points[:, :, -1:] + temporal_encoding
+        try:
+            full_track_points[track_start_index:track_end_index] = track_points[0:track_end_index-track_start_index]
+        except Exception as e:
+            print("full track points", full_track_points.shape)
+            print("start and end", track_start_index, track_end_index)
+            print("track_points", track_points.shape)
+            print(f"Exception occurred: {e}")
+            raise
 
         return full_track_points.float()
 
@@ -134,15 +133,12 @@ class TrackingData():
         pc_path = os.path.join(root_pc_path, pc_name)
         pc = torch.from_numpy(np.load(pc_path)).float()
         
-        track_start_index = track.starting_frame_index
-        track_end_index = track_start_index + len(track)
-        #expected_size = track_end_index - track_start_index
         if pc.shape[0] == 181:
             pc = pc[:180,:]
         return pc
 
     def _get_offset_pc(self, track: Tracklet, track_points: np.ndarray):
-        foi_center = np.array(track.get_foi_box().center)
+        foi_center = np.array(track.boxes[0].center) # offset from the starting frame
         offset_points = track_points - foi_center
         return offset_points
 
@@ -152,22 +148,20 @@ class TrackingData():
 
         for i, transformation in enumerate(self.transformations):
             if i == self.center_offset_index:
-                foi_data = track_data[track.foi_index]
+                foi_data = track_data[track.starting_frame_index]
                 transformation.set_offset(foi_data)
-                #if track.center_offset is None:
                 track.set_center_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             if i == self.yaw_offset_index:
-                foi_data = track_data[track.foi_index]
+                foi_data = track_data[track.starting_frame_index]
                 transformation.set_offset(foi_data)
-                #if track.yaw_offset is None:
                 track.set_yaw_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
 
             track_data = transformation.transform(track_data)
-            if track.has_gt or type(transformation) == ToTensor:
+            if track.has_gt or  self._get_full_class_path(transformation) == self._get_full_class_path(ToTensor):
                 gt_data = transformation.transform(gt_data)
 
         return track_data, gt_data
@@ -185,12 +179,9 @@ class TrackingData():
             for track_id, track in tracks.items():
                 yield track
 
-    def _format_tracking_data(self):
-        sequences = self.tracking_results.seq_tokens
-        
-
+    def _format_tracking_data(self):        
         seq_tracking_ids = {}
-        for sequence_token in tqdm.tqdm(sequences):
+        for sequence_token in tqdm.tqdm(self.seqs, position=0, leave=True):
             sequence_frames = self.tracking_results.get_frames_in_sequence(sequence_token)
 
             track_ids = defaultdict(None)
@@ -246,20 +237,21 @@ class TrackingData():
 
 class WindowTrackingData():
 
-    def __init__(self, tracking_results, window_start, window_end, transformations=[], tracking_data=None, remove_non_foi_tracks=True, remove_non_gt_tracks=True):
+    def __init__(self, tracking_results, window_size, transformations=[], tracking_data=None, remove_non_foi_tracks=True, remove_non_gt_tracks=True, seqs=None):
         self.tracking_results = tracking_results
-        self.window_start = window_start
-        self.window_end = window_end
+        self.window_size = window_size
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
+        self.seqs = seqs
         
+        self.sw_augmentation = self.tracking_results.config["data"]["sw_augmentation"]
         self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
         self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
 
         if not tracking_data:
             print("Loading data samples")
 
-        self.tracking_data = TrackingData(tracking_results, transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks) if not tracking_data else tracking_data
+        self.tracking_data = TrackingData(tracking_results, transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks, seqs) if not tracking_data else tracking_data
 
         if not tracking_data:
             print(f"Finished loading {len(self.tracking_data)} data samples!")
@@ -269,51 +261,92 @@ class WindowTrackingData():
 
     def __getitem__(self, index):
         track_data, point_data, gt_data = self.tracking_data[index]
-        foi_index = self.tracking_data.get_foi_index(index)
-        start_index = foi_index + self.window_start
-        end_index = foi_index + self.window_end
 
-        if start_index < 0:
-            pad_start = -start_index
-            start_index = 0
-        else:
-            pad_start = 0
+        start_index, end_index = self._get_absolute_window_range(index)
 
-        if end_index >= len(track_data):
-            pad_end = end_index - len(track_data) + 1
-            end_index = len(track_data) - 1
-        else:
-            pad_end = 0
+        start_index, end_index, pad_start, pad_end = self._get_pad_range(start_index, end_index, len(track_data))
 
-        wind_track_data = track_data[start_index:end_index+1]
-        wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
+        wind_track_data = self._get_window_track_data(track_data, start_index, end_index, pad_start, pad_end)
 
-        if self.use_pc:
-            wind_point_data = point_data[start_index:end_index+1]
-            wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
-        else:
-            wind_point_data = point_data # empty tensor
+        wind_point_data = self._get_window_point_data(point_data, start_index, end_index, pad_start, pad_end)
+
+        rel_foi_index = torch.tensor([int((self.window_size-1)/2)+1])
+        gt_data = torch.cat((gt_data, rel_foi_index))
+
 
         return wind_track_data, wind_point_data, gt_data
     
     def get(self, track_index):
         return self.tracking_data.get(track_index)
     
+    def _get_absolute_window_range(self, index):
+        foi_index = self.tracking_data.get_foi_index(index)
+
+        if self.sw_augmentation:
+            window_start = random.randint(-self.window_size+1,0)
+            window_end = window_start + self.window_size - 1
+        else:
+            window_start = int(-(self.window_size-1)/2)
+            window_end = int((self.window_size-1)/2)
+
+        start_index = foi_index + window_start
+        end_index = foi_index + window_end
+        return start_index, end_index
+    
+    def _get_pad_range(self, start_index, end_index, track_length):
+        if start_index < 0:
+            pad_start = -start_index
+            start_index = 0
+        else:
+            pad_start = 0
+
+        if end_index >= track_length:
+            pad_end = end_index - track_length + 1
+            end_index = track_length - 1
+        else:
+            pad_end = 0
+        return start_index, end_index, pad_start, pad_end
+    
+    def _get_window_track_data(self, track_data, start_index, end_index, pad_start, pad_end):
+        # Extract the window
+        wind_track_data = track_data[start_index:end_index+1]
+
+        # Pad
+        wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
+
+        # Add temporal encoding to tracks
+        wind_track_data_temp = torch.zeros((self.window_size, 9))
+        wind_track_data_temp[:, :8] = wind_track_data
+        wind_track_data_temp[:, 8] = torch.arange(self.window_size)
+        return wind_track_data_temp
+    
+    def _get_window_point_data(self, point_data, start_index, end_index, pad_start, pad_end):
+        # Extract, pad and add temporal encoding for point clouds
+        if self.use_pc:
+            wind_point_data = point_data[start_index:end_index+1]
+            wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
+            wind_point_data_temp = torch.zeros((wind_point_data.shape[0], wind_point_data.shape[1], 4))
+            wind_point_data_temp[:, :, :3] = wind_point_data
+            wind_point_data_temp[:, :, 3] = torch.arange(self.window_size).unsqueeze(1).expand(-1, wind_point_data.shape[1])
+        else:
+            wind_point_data_temp = point_data # empty tensor
+        return wind_point_data_temp
 
 class SlidingWindowTrackingData():
 
-    def __init__(self, tracking_results, window_size, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True):
+    def __init__(self, tracking_results, window_size, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True, seqs=None):
         self.tracking_results = tracking_results
         self.window_size = window_size
         self.transformations = transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
+        self.seqs = None
 
         self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
         self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
 
         print("Loading sequences...")
-        self.tracking_data = TrackingData(tracking_results, self.transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks)
+        self.tracking_data = TrackingData(tracking_results, self.transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks, seqs)
 
         print(f"Finished loading {len(self.tracking_data) * self.window_size} data samples!")
 
@@ -322,41 +355,74 @@ class SlidingWindowTrackingData():
 
     def __getitem__(self, index):
         track_index = index // self.window_size
-        window_start_index = index % self.window_size - self.window_size + 1
-        window_end_index = window_start_index + self.window_size - 1
-
-        foi_index = self.tracking_data.get_foi_index(track_index)
         track_data, point_data, gt_data = self.tracking_data[track_index]
 
-        start_index = foi_index + window_start_index
-        end_index = foi_index + window_end_index
+        start_index, end_index = self._get_absolute_window_range(index, track_index)
 
-        if start_index < 0:
-            pad_start = -start_index
-            start_index = 0
-        else:
-            pad_start = 0
+        start_index, end_index, pad_start, pad_end = self._get_pad_range(start_index, end_index, len(track_data))
 
-        if end_index >= len(track_data):
-            pad_end = end_index - len(track_data) + 1
-            end_index = len(track_data) - 1
-        else:
-            pad_end = 0
+        wind_track_data = self._get_window_track_data(track_data, start_index, end_index, pad_start, pad_end)
 
-        wind_track_data = track_data[start_index:end_index+1]
-        wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
-
-        if self.use_pc:
-            wind_point_data = point_data[start_index:end_index+1]
-            wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
-        else:
-            wind_point_data = point_data # empty tensor
+        wind_point_data = self._get_window_point_data(point_data, start_index, end_index, pad_start, pad_end)
+        
+        rel_foi_index = torch.tensor([self.window_size - index % self.window_size -1])
+        gt_data = torch.cat((gt_data, rel_foi_index))
 
         return wind_track_data, wind_point_data, gt_data
 
     def get(self, sliding_track_index):
         track_index = sliding_track_index // self.window_size
         return self.tracking_data.get(track_index)
+    
+    def _get_absolute_window_range(self, index, track_index):
+        foi_index = self.tracking_data.get_foi_index(track_index)
+
+        window_start_index = index % self.window_size - self.window_size + 1
+        window_end_index = window_start_index + self.window_size - 1
+
+        start_index = foi_index + window_start_index
+        end_index = foi_index + window_end_index
+
+        return start_index, end_index
+    
+    def _get_pad_range(self, start_index, end_index, track_length):
+        if start_index < 0:
+            pad_start = -start_index
+            start_index = 0
+        else:
+            pad_start = 0
+
+        if end_index >= track_length:
+            pad_end = end_index - track_length + 1
+            end_index = track_length - 1
+        else:
+            pad_end = 0
+        return start_index, end_index, pad_start, pad_end
+    
+    def _get_window_track_data(self, track_data, start_index, end_index, pad_start, pad_end):
+        # Extract the window
+        wind_track_data = track_data[start_index:end_index+1]
+
+        # Pad
+        wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
+
+        # Add temporal encoding to tracks
+        wind_track_data_temp = torch.zeros((self.window_size, 9))
+        wind_track_data_temp[:, :8] = wind_track_data
+        wind_track_data_temp[:, 8] = torch.arange(self.window_size)
+        return wind_track_data_temp
+    
+    def _get_window_point_data(self, point_data, start_index, end_index, pad_start, pad_end):
+        # Extract, pad and add temporal encoding for point clouds
+        if self.use_pc:
+            wind_point_data = point_data[start_index:end_index+1]
+            wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
+            wind_point_data_temp = torch.zeros((wind_point_data.shape[0], wind_point_data.shape[1], 4))
+            wind_point_data_temp[:, :, :3] = wind_point_data
+            wind_point_data_temp[:, :, 3] = torch.arange(self.window_size).unsqueeze(1).expand(-1, wind_point_data.shape[1])
+        else:
+            wind_point_data_temp = point_data # empty tensor
+        return wind_point_data_temp
 
 
         

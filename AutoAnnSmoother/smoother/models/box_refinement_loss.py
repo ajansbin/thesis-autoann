@@ -42,13 +42,10 @@ class BoxRefinementLoss():
         n_gt = has_gt.sum()
         center_loss = torch.mul(center_loss, has_gt).sum() / n_gt
         size_loss = torch.mul(size_loss, has_gt).sum() / n_gt
-        rotation_loss = torch.mul(rotation_loss, has_gt).sum() / n_gt
 
-        # print("rot_sin", rotation_sin.tolist())
-        # print("rot_cos", rotation_cos.tolist())
-        # print("gt_rot_sin", gt_rotation_sin.tolist())
-        # print("gt_rot_cos", gt_rotation_cos.tolist())
-        # print("rot_loss", rotation_loss)
+        print("rot1", rotation_loss)
+        rotation_loss = torch.mul(rotation_loss, has_gt).sum() / n_gt
+        print("rot2", rotation_loss)
 
         return center_loss, size_loss, rotation_loss
 
@@ -103,12 +100,6 @@ class BoxRefinementLoss():
         sos_ref_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none')
 
         ### ROTATION MSE
-        #dets_rotations = dets[non_zero_gt_indices,6:10]
-        #ref_rotations = refined_dets[non_zero_gt_indices,6:10]
-        #gt_rotations = gt_anns[non_zero_gt_indices,6:10]
-        #sos_det_rotation = F.mse_loss(dets_rotations, gt_rotations, reduction='none')
-        #sos_ref_rotation = F.mse_loss(ref_rotations, gt_rotations, reduction='none')
-
         dets_rotations = dets[non_zero_gt_indices,6:8]
         ref_rotations = refined_dets[non_zero_gt_indices,6:8]
         gt_rotations = gt_anns[non_zero_gt_indices,6:8]
@@ -120,13 +111,8 @@ class BoxRefinementLoss():
         ### SCORE 
      
         gt_score = gt_anns[:,-1]
-        dets_score = torch.where(dets[:,-1]<0.5, 0.0, 1.0)
-        correct_dets = torch.sum(dets_score == gt_score)
-        acc_dets = correct_dets.float() / gt_score.size(0)
-
         refined_dets = torch.where(refined_dets[:,-1]<0.5, 0.0, 1.0)
-        correct_ref = torch.sum(refined_dets == gt_score)
-        acc_ref = correct_ref.float() / gt_score.size(0)
+        acc_ref = torch.sum(refined_dets == gt_score).float()
         
         return {
             "rmse_dets_center": sos_det_center.sum(-1),
@@ -142,7 +128,6 @@ class BoxRefinementLoss():
             "rmse_ref_y":sos_ref_y,
             "rmse_ref_z":sos_ref_z
         }, {
-            "acc_dets": acc_dets,
             "acc_ref": acc_ref
         }, n_non_zero
     

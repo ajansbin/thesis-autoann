@@ -33,6 +33,7 @@ class SmoothingTrainer():
         self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
+        self.sw_augmentation = self.conf["data"]["sw_augmentation"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
         
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
@@ -46,8 +47,11 @@ class SmoothingTrainer():
         self.batch_size = self.conf["train"]["batch_size"]
         self.n_workers = self.conf["train"]["n_workers"]
 
+        torch.manual_seed(self.seed)
+
         self.tracking_results = None
-        self.data_model = None
+        self.train_data_model = None
+        self.val_data_model = None
         self.model = None
         self.n_train_batches = 0
         self.n_val_batches = 0
@@ -56,8 +60,6 @@ class SmoothingTrainer():
 
         print("---Setting up wandb-logger---")
         self.log_out = configure_loggings(self.run_name, self.save_dir, self.conf)
-
-
 
     def _get_config(self, conf_path):
         return load_config(conf_path)
@@ -76,13 +78,37 @@ class SmoothingTrainer():
         
         transformations = self._add_transformations(self.conf["data"]["transformations"])
 
+        # Get train and val split sequences
+        train_seqs, val_seqs = self._get_train_val_seq_split(self.tracking_results.seq_tokens)
         # Load data model
         if self.sliding_window:
-            self.data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks)
+            self.train_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
+            self.val_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
         else:
-            start_ind = int(-(self.window_size-1)/2)
-            end_ind = int((self.window_size-1)/2)
-            self.data_model = WindowTrackingData(self.tracking_results,start_ind, end_ind, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks)
+            self.train_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
+            self.val_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
+
+    def _get_train_val_seq_split(self, seqs: list):
+        # Create a list of indices
+        indices = torch.arange(len(seqs))
+
+        # Shuffle the indices
+        shuffled_indices = indices[torch.randperm(len(indices))]
+
+        # Calculate the lengths of the train and validation sets
+        train_len = int(len(seqs) * self.train_size)
+        val_len = len(seqs) - train_len
+
+        # Split the indices into train and validation sets
+        train_indices = shuffled_indices[:train_len].tolist()
+        val_indices = shuffled_indices[train_len:].tolist()
+
+        # Get the sequences corresponding to the respective indices
+        train_seqs = [seqs[i] for i in train_indices]
+        val_seqs = [seqs[i] for i in val_indices]
+
+        return train_seqs, val_seqs
+
 
     def _add_transformations(self, transformations_dict):
         transformations = [ToTensor()]
@@ -146,15 +172,8 @@ class SmoothingTrainer():
         optimizer = optim.Adam(self.model.parameters(), lr=self.lr,  weight_decay=self.wd)
         tu = TrainingUtils(self.conf, self.log_out)
 
-        torch.manual_seed(self.seed)
-        size = len(self.data_model)
-        n_train = int(self.train_size*size)
-        n_val = size - n_train
-
-        train_dataset, val_dataset = random_split(self.data_model, [n_train, n_val])
-
-        train_dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
-        val_dataloader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
+        train_dataloader = DataLoader(self.train_data_model, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
+        val_dataloader = DataLoader(self.val_data_model, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
 
         self.n_train_batches = len(train_dataloader)
         self.n_val_batches = len(val_dataloader)
