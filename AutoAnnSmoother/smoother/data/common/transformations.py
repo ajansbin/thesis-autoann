@@ -108,3 +108,48 @@ class YawOffset(Transformation):
     def set_start_and_end_index(self,start_index,end_index):
         self.start_index = start_index
         self.end_index = end_index
+
+
+class PointsShift(Transformation):
+
+    def __init__(self, max_shift_size):
+        self.max_shift_size = max_shift_size
+        self.start_index = 0
+        self.end_index = -1
+
+    def transform(self, points:torch.tensor) -> torch.tensor:
+        '''
+        input: points   tensor (W,1000,4)
+        '''
+        # randomly select shifting amount
+        N = self.max_shift_size
+        s = 2*N*torch.rand(3) - N
+
+        # only shift coordinates 0:3
+        shifted_points = points.clone()
+        shifted_points[self.start_index:self.end_index, :, 0:3] += s
+
+        return shifted_points
+    
+    def set_start_and_end_index(self,start_index,end_index):
+        self.start_index = start_index
+        self.end_index = end_index
+    
+class PointsScale(Transformation):
+    
+    def __init__(self, min_scale, max_scale):
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+
+    def transform(self, points: torch.tensor) -> torch.tensor:
+        """
+        input: points tensor (W, 1000, 4)
+        """
+        # randomly select scaling factor
+        scaling_factor = (self.max_scale - self.min_scale) * torch.rand(3) + self.min_scale
+
+        # only scale coordinates 0:3
+        scaled_points = points.clone()
+        scaled_points[:, :, 0:3] *= scaling_factor
+
+        return scaled_points

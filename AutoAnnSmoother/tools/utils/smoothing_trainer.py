@@ -2,7 +2,7 @@ from smoother.io.config_utils import load_config
 from smoother.io.logging_utils import configure_loggings
 from tools.utils.training_utils import TrainingUtils
 from smoother.data.common.tracking_data import SlidingWindowTrackingData, WindowTrackingData
-from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
+from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize, PointsShift, PointsScale
 from smoother.models.pc_track_net import PCTrackNet, TrackNet, PCNet
 import torch
 from torch import optim
@@ -76,17 +76,17 @@ class SmoothingTrainer():
         else:
             raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
         
-        transformations = self._add_transformations(self.conf["data"]["transformations"])
+        transformations, points_transformations = self._add_transformations(self.conf["data"]["transformations"])
 
         # Get train and val split sequences
         train_seqs, val_seqs = self._get_train_val_seq_split(self.tracking_results.seq_tokens)
         # Load data model
         if self.sliding_window:
-            self.train_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
-            self.val_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
+            self.train_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
+            self.val_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
         else:
-            self.train_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
-            self.val_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
+            self.train_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
+            self.val_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
 
     def _get_train_val_seq_split(self, seqs: list):
         # Create a list of indices
@@ -131,7 +131,16 @@ class SmoothingTrainer():
         if transformations_dict["yaw_offset"]:
             transformations.append(YawOffset())
 
-        return transformations
+        points_transformations = []
+        if transformations_dict["points"]["points_shift"]:
+            shift_max_size = transformations_dict["points"]["shift_max_size"]
+            points_transformations.append(PointsShift(shift_max_size))
+        if transformations_dict["points"]["points_scale"]:
+            scale_min = transformations_dict["points"]["scale_min"]
+            scale_max = transformations_dict["points"]["scale_max"]
+            points_transformations.append(PointsScale(scale_min, scale_max))
+
+        return transformations, points_transformations
     
     def load_model(self):
         print("---Loading model---")

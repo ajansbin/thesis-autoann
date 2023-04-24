@@ -44,7 +44,14 @@ data:
         stdev: [0.5951111005230132, 0.24225834247964198]
       score:
         mean: [0.0]
-        stdev: [1]  
+        stdev: [1] 
+    points:
+      points_shift: true
+      shift_max_size: 1
+      points_scale: true
+      scale_min: 0.9
+      scale_max: 1.1
+
 
 ### Training Specific ###
 train:

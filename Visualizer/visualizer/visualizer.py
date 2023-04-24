@@ -207,6 +207,11 @@ class VisualizeResults():
         center_out, size_out, rot_out, score_out = model.forward(track.unsqueeze(0), point.unsqueeze(0))
         print(center_out.shape, size_out.shape, rot_out.shape, score_out.shape)
 
+        center_out = center_out.squeeze(0)
+        size_out = size_out.squeeze(0)
+        rot_out = rot_out.squeeze(0)
+        score_out = score_out.squeeze(0)
+
         mid_wind = track.shape[0] // 2 + 1
         c_hat = track[mid_wind, 0:3] + center_out[mid_wind]
         s_hat = track[mid_wind, 3:6] + size_out
@@ -217,7 +222,7 @@ class VisualizeResults():
         if score < score_thresh:
             return (None, score)
 
-        model_out = torch.cat((c_hat[mid_wind], s_hat, r_hat[mid_wind], score_out[mid_wind]), dim=-1).squeeze().detach()
+        model_out = torch.cat((c_hat, s_hat, r_hat, score), dim=-1).squeeze().detach()
         #unnormalize
         for transformation in reversed(self.transformations):
             if type(transformation) == CenterOffset:

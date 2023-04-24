@@ -1,7 +1,7 @@
 import tqdm
 from collections import defaultdict
 from smoother.data.common.dataclasses import TrackingBox, Tracklet
-from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
+from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize, PointsShift
 import torch
 import numpy as np
 import os
@@ -13,9 +13,10 @@ import random
 
 class TrackingData():
 
-    def __init__(self, tracking_results, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True, seq_tokens = None):
+    def __init__(self, tracking_results, transformations=[], points_transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True, seq_tokens = None):
         self.tracking_results = tracking_results
         self.transformations = transformations
+        self.points_transformations = points_transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
         self.seqs = self.tracking_results.seq_tokens if not seq_tokens else seq_tokens
@@ -63,6 +64,7 @@ class TrackingData():
         track_data, gt_data = self._apply_transformations(track, track_data, gt_data)
         if self.use_pc:
             track_points = self._get_and_pad_track_points(track)
+            track_points = self._transform_track_points(track_points, track)
         else:
             track_points = torch.tensor([])
         return track_data, track_points, gt_data
@@ -121,13 +123,24 @@ class TrackingData():
             raise
 
         return full_track_points.float()
-
+    
+    def _transform_track_points(self, points, track):
+        if len(self.points_transformations) == 0:
+            return points
+        
+        track_start_index = track.starting_frame_index
+        track_end_index = track_start_index + len(track)
+        for p_transformation in self.points_transformations:
+            if self._get_full_class_path(p_transformation) == self._get_full_class_path(PointsShift):
+                p_transformation.set_start_and_end_index(track_start_index, track_end_index)
+            points = p_transformation.transform(points)
+        return points
     
     def _get_point_clouds(self, track):
         if "pc_path" in self.tracking_results.config["data"]:
             root_pc_path = self.tracking_results.config["data"]["pc_path"]
         else:
-            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_full_train'
+            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
@@ -219,7 +232,7 @@ class TrackingData():
                 track_ids_filtered = copy.deepcopy(track_ids)
 
             # Associate ground truth to each track
-            gt_boxes = self.tracking_results.get_gt_boxes_from_frame(frame_token)
+            gt_boxes = copy.deepcopy(self.tracking_results.get_gt_boxes_from_frame(frame_token))
             for gt_box in gt_boxes:
                 gt_box['rotation'] = convert_to_sine_cosine(gt_box['rotation'])
 
@@ -237,7 +250,7 @@ class TrackingData():
 
 class WindowTrackingData():
 
-    def __init__(self, tracking_results, window_size, transformations=[], tracking_data=None, remove_non_foi_tracks=True, remove_non_gt_tracks=True, seqs=None):
+    def __init__(self, tracking_results, window_size, transformations=[], points_transformations=[], tracking_data=None, remove_non_foi_tracks=True, remove_non_gt_tracks=True, seqs=None):
         self.tracking_results = tracking_results
         self.window_size = window_size
         self.remove_non_foi_tracks = remove_non_foi_tracks
@@ -251,7 +264,7 @@ class WindowTrackingData():
         if not tracking_data:
             print("Loading data samples")
 
-        self.tracking_data = TrackingData(tracking_results, transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks, seqs) if not tracking_data else tracking_data
+        self.tracking_data = TrackingData(tracking_results, transformations, points_transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks, seqs) if not tracking_data else tracking_data
 
         if not tracking_data:
             print(f"Finished loading {len(self.tracking_data)} data samples!")
@@ -334,10 +347,11 @@ class WindowTrackingData():
 
 class SlidingWindowTrackingData():
 
-    def __init__(self, tracking_results, window_size, transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True, seqs=None):
+    def __init__(self, tracking_results, window_size, transformations=[], points_transformations=[], remove_non_foi_tracks=True, remove_non_gt_tracks=True, seqs=None):
         self.tracking_results = tracking_results
         self.window_size = window_size
         self.transformations = transformations
+        self.points_transformations = points_transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
         self.seqs = None
@@ -346,7 +360,7 @@ class SlidingWindowTrackingData():
         self.use_track = self.tracking_results.config["model"]["track"]["use_track"]
 
         print("Loading sequences...")
-        self.tracking_data = TrackingData(tracking_results, self.transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks, seqs)
+        self.tracking_data = TrackingData(tracking_results, self.transformations, self.points_transformations, self.remove_non_foi_tracks, self.remove_non_gt_tracks, seqs)
 
         print(f"Finished loading {len(self.tracking_data) * self.window_size} data samples!")
 
