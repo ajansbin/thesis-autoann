@@ -18,28 +18,39 @@ import copy
 
 class VisualizeResults():
 
-    def __init__(self, conf_path, version, split, result_path, data_path, model_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False, sw_refine=False):
+    def __init__(self, conf_path, version, split, result_path, anno_path, data_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False):
         self.conf_path = conf_path
         self.version = version
         self.split = split
         self.result_path = result_path
+        self.anno_path = anno_path
         self.data_path = data_path
-        self.model_path = model_path
-        self.sw_refine = sw_refine # TODO: implement this
+        #self.model_path = model_path
+
+        self.det_color = (0,0,255)      # Blue
+        self.ref_color = (255,255,0)    # Yellow
+        self.gt_color = (255,0,0)       # Red
+        self.line_thickness = 3
 
         self.conf = load_config(self.conf_path)
 
-        self.result_data = ZodTrackingResults(self.result_path, self.conf, self.version, self.split, self.data_path)
+        print(self.data_path)
+        self.result_data = ZodTrackingResults(self.result_path, self.conf, self.version, self.split, self.anno_path, self.data_path)
         self.transformations = self._add_transformations(self.conf["data"]["transformations"])
         self.window_size = self.conf["data"]["window_size"]
         start_ind = int(-(self.window_size-1)/2)
         end_ind = int((self.window_size-1)/2)
-        self.track_data = WindowTrackingData(self.result_data, start_ind, end_ind, self.transformations, remove_non_foi_tracks=remove_non_foi_tracks, remove_non_gt_tracks=remove_non_gt_tracks)
+        self.track_data = WindowTrackingData(self.result_data, self.window_size, self.transformations, remove_non_foi_tracks=remove_non_foi_tracks, remove_non_gt_tracks=remove_non_gt_tracks)
 
-        self.trained_model = self._get_trained_model(self.model_path, self.conf)
-    
+        self.trained_model = None
 
-    def plot_track_index(self, track_index, frame_track_index, show_lidar=True, show_det=True, show_ref=True, show_gt=True):
+    def load_model(self, model_path, new_conf_path=None):
+        if new_conf_path:
+            self.conf = load_config(new_conf_path)
+        self.trained_model = self._get_trained_model(model_path, self.conf)
+        print(f"Succefully loaded model {os.path.basename(model_path)}")
+
+    def plot_track_index(self, track_index, frame_track_index, show_lidar=True, show_det=True, show_ref=True, show_gt=True, score_thresh=0.0):
         track, seq, track_camera_index, track_box = self._extract_track_and_sequence_info(track_index, frame_track_index, self.track_data)
         
         print("Showing track", track)
@@ -54,23 +65,26 @@ class VisualizeResults():
 
         if show_det:
             track_box3d = self._create_track_box(track_box, seq)
-            image = self._add_box_to_image(image, track_box3d, seq, color=(0, 100, 0), line_thickness=2)
+            image = self._add_box_to_image(image, track_box3d, seq, color=self.det_color, line_thickness=self.line_thickness)
 
         if show_ref:
-            ref_box = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, seq)
-            image = self._add_box_to_image(image, ref_box, seq, color=(255, 255, 0), line_thickness=2)
+            ref_box, score = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, seq, score_thresh)
+            if ref_box:
+                image = self._add_box_to_image(image, ref_box, seq, color=self.ref_color, line_thickness=self.line_thickness)
+            else:
+                print(f"Refinement score is {score} is lower than score threshold {score_thresh}.")
 
         if show_gt:
             if track.has_gt:
                 gt_box = self._get_gt_box(track, seq)
-                image = self._add_box_to_image(image, gt_box, seq, color=(255, 0, 0), line_thickness=2)
+                image = self._add_box_to_image(image, gt_box, seq, color=self.gt_color, line_thickness=self.line_thickness)
             else:
                 print("Track does not have gt, skipping gt-box")
 
 
         self._plot_image(image)
 
-    def generate_sequence_gif(self, seq_id, output_dir, gif_name="sequence_tracks.gif",step=2, duration=400, show_lidar=True, show_det=True, show_ref=True, show_gt=True):
+    def generate_sequence_gif(self, seq_id, output_dir, gif_name="sequence_tracks.gif",step=2, duration=400, show_lidar=True, show_det=True, show_ref=True, show_gt=True, score_thresh=0.0):
         seq = self.result_data.zod[seq_id]
         camera_lidar_map = self._get_camera_lidar_index_map(seq)
 
@@ -104,16 +118,17 @@ class VisualizeResults():
 
                 if show_det:
                     track_box3d = self._create_track_box(track_box, seq)
-                    image = self._add_box_to_image(image, track_box3d, seq, color=(0, 100, 0), line_thickness=2)
+                    image = self._add_box_to_image(image, track_box3d, seq, color=self.det_color, line_thickness=self.line_thickness)
 
                 if show_ref:
-                    ref_box = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, seq)
-                    image = self._add_box_to_image(image, ref_box, seq, color=(255, 255, 0), line_thickness=2)
+                    ref_box, score = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, seq, score_thresh)
+                    if ref_box:
+                        image = self._add_box_to_image(image, ref_box, seq, color=self.ref_color, line_thickness=self.line_thickness)
 
                 if lidar_index == track_same_seq.foi_index and show_gt:
                     if track_same_seq.has_gt:
                         gt_box = self._get_gt_box(track_same_seq, seq)
-                        image = self._add_box_to_image(image, gt_box, seq, color=(255, 0, 0), line_thickness=2)
+                        image = self._add_box_to_image(image, gt_box, seq, color=self.gt_color, line_thickness=self.line_thickness)
                     else:
                         print("Track does not have gt, skipping gt-box")
 
@@ -166,7 +181,6 @@ class VisualizeResults():
     def _create_track_box(self, track_box, seq):
         box = Box3D(track_box.center, track_box.size, convert_to_quaternion(track_box.rotation), Lidar.VELODYNE)
         box.convert_to(Camera.FRONT, seq.calibration)
-
         return box
 
     def _get_gt_box(self, track, seq):
@@ -181,7 +195,7 @@ class VisualizeResults():
 
         return gt_box
     
-    def _get_refined_box(self, model, track_data, track_index,frame_track_index, seq):
+    def _get_refined_box(self, model, track_data, track_index,frame_track_index, seq, score_thresh):
         track_obj = track_data.get(track_index)
         old_foi_index = copy.copy(track_data.get(track_index).foi_index)
 
@@ -189,14 +203,21 @@ class VisualizeResults():
 
         track_data.get(track_index).foi_index = frame_track_index + track_obj.starting_frame_index
         track, point, gt = track_data[track_index]
-        center_out, size_out, rot_out = model.forward(track.unsqueeze(0), point.unsqueeze(0))#.squeeze().detach()
+        print(track.unsqueeze(0).shape, point.unsqueeze(0).shape)
+        center_out, size_out, rot_out, score_out = model.forward(track.unsqueeze(0), point.unsqueeze(0))
+        print(center_out.shape, size_out.shape, rot_out.shape, score_out.shape)
 
         mid_wind = track.shape[0] // 2 + 1
-        c_hat = track[mid_wind, 0:3] + center_out
+        c_hat = track[mid_wind, 0:3] + center_out[mid_wind]
         s_hat = track[mid_wind, 3:6] + size_out
-        r_hat = track[mid_wind, 6:8] + rot_out
+        r_hat = track[mid_wind, 6:8] + rot_out[mid_wind]
 
-        model_out = torch.cat((c_hat, s_hat, r_hat), dim=-1).squeeze().detach()
+        score = score_out[mid_wind]
+
+        if score < score_thresh:
+            return (None, score)
+
+        model_out = torch.cat((c_hat[mid_wind], s_hat, r_hat[mid_wind], score_out[mid_wind]), dim=-1).squeeze().detach()
         #unnormalize
         for transformation in reversed(self.transformations):
             if type(transformation) == CenterOffset:
@@ -208,11 +229,12 @@ class VisualizeResults():
 
         # create refined box and add to image
         ref_box = Box3D(model_out[0:3].numpy(), model_out[3:6].numpy(), convert_to_quaternion(model_out[6:8].numpy()), Lidar.VELODYNE)
+
         ref_box.convert_to(Camera.FRONT, seq.calibration)
 
         track_data.get(track_index).foi_index = old_foi_index
 
-        return ref_box
+        return (ref_box, score)
     
     def _get_masked_lidar(self, track_box, lidar_frame, seq):
         core_lidar = self.result_data.get_lidar_data_in_frame(track_box.frame_token, track_box.frame_index)
@@ -263,7 +285,6 @@ class VisualizeResults():
         return transformations
     
     def _get_trained_model(self, model_path, conf):
-        print("---Loading model---")
         self.use_pc = conf["model"]["pc"]["use_pc"]
         self.use_track = conf["model"]["track"]["use_track"]
 
@@ -288,7 +309,7 @@ class VisualizeResults():
 
         checkpoint = torch.load(model_path)
         model.load_state_dict(checkpoint)
-        print("---Finished loading trained model---")
+        model.eval()
         return model
 
     def _get_model_cls(self, use_pc, use_track):
