@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import os
 import copy
-from smoother.data.common.utils import convert_to_sine_cosine
+from smoother.data.common.utils import convert_to_yaw
 from pyquaternion import Quaternion
 import random
 
@@ -67,6 +67,13 @@ class TrackingData():
             track_points = self._transform_track_points(track_points, track)
         else:
             track_points = torch.tensor([])
+
+
+        '''
+        track_data      (180,7)         [x,y,z,l,w,h,r]
+        track_points    (180, 1000, 3)  [x,y,z]
+        gt_data         (8)             [x,y,z,l,w,h,r,s]
+        '''
         return track_data, track_points, gt_data
 
     def _create_track_data(self, track):
@@ -79,12 +86,11 @@ class TrackingData():
 
     def _get_track_data_entry(self, i, track, track_start_index, track_end_index):
         if i < track_start_index or i >= track_end_index:
-            pad_data = [0] * 8 #+ [i - track.foi_index]
+            pad_data = [0] * 7
             return pad_data
         else:
             box = track[i - track_start_index]
-            #temporal_encoding = [box.frame_index - track.starting_frame_index]
-            return box.center + box.size + box.rotation #+ temporal_encoding
+            return box.center + box.size + box.rotation
         
     def _create_gt_data(self, track):
         if track.has_gt:
@@ -92,10 +98,10 @@ class TrackingData():
             center = list(gt_box['translation'])
             size = list(gt_box['size'])
             rotation = gt_box['rotation']
-            gt = [1] #has gt indicator
-            gt_data = center + size + rotation + gt
+            has_gt = [1] # has gt indicator
+            gt_data = center + size + rotation + has_gt
         else:
-            gt_data = [0] * 9
+            gt_data = [0] * 8
 
         return gt_data
 
@@ -106,7 +112,7 @@ class TrackingData():
 
         track_start_index = track.starting_frame_index
         track_end_index = track_start_index + len(track)
-        if track_end_index == 181:
+        if track_end_index > 180:
             track_end_index = 180
 
         # Initialize a tensor with the required dimensions
@@ -140,19 +146,19 @@ class TrackingData():
         if "pc_path" in self.tracking_results.config["data"]:
             root_pc_path = self.tracking_results.config["data"]["pc_path"]
         else:
-            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
+            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/full_train'
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
         pc = torch.from_numpy(np.load(pc_path)).float()
         
-        if pc.shape[0] == 181:
+        if pc.shape[0] > 180:
             pc = pc[:180,:]
         return pc
 
     def _get_offset_pc(self, track: Tracklet, track_points: np.ndarray):
-        foi_center = np.array(track.boxes[0].center) # offset from the starting frame
-        offset_points = track_points - foi_center
+        starting_center = np.array(track.boxes[0].center) # offset from the starting frame
+        offset_points = track_points - starting_center
         return offset_points
 
     def _apply_transformations(self, track, track_data, gt_data):
@@ -161,13 +167,13 @@ class TrackingData():
 
         for i, transformation in enumerate(self.transformations):
             if i == self.center_offset_index:
-                foi_data = track_data[track.starting_frame_index]
-                transformation.set_offset(foi_data)
+                offset_data = track_data[track.starting_frame_index]
+                transformation.set_offset(offset_data)
                 track.set_center_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             if i == self.yaw_offset_index:
-                foi_data = track_data[track.starting_frame_index]
-                transformation.set_offset(foi_data)
+                offset_data = track_data[track.starting_frame_index]
+                transformation.set_offset(offset_data)
                 track.set_yaw_offset(transformation.offset)
                 transformation.set_start_and_end_index(track_start_index, track_end_index)
             elif i == self.normalize_index:
@@ -211,8 +217,8 @@ class TrackingData():
                     if self.remove_bottom_center:
                         box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
 
-                    #convert Quaternion to polar angle representation
-                    box['rotation'] = convert_to_sine_cosine(box['rotation'])
+                    #convert Quaternion to yaw
+                    box['rotation'] = convert_to_yaw(box['rotation'])
 
                     tracking_box = TrackingBox.from_dict(box)
                     tracking_id = tracking_box.tracking_id
@@ -234,7 +240,7 @@ class TrackingData():
             # Associate ground truth to each track
             gt_boxes = copy.deepcopy(self.tracking_results.get_gt_boxes_from_frame(frame_token))
             for gt_box in gt_boxes:
-                gt_box['rotation'] = convert_to_sine_cosine(gt_box['rotation'])
+                gt_box['rotation'] = convert_to_yaw(gt_box['rotation'])
 
             track_ids_filtered_has_gt = defaultdict(None)
             for track_id, track in track_ids_filtered.items():
@@ -329,8 +335,8 @@ class WindowTrackingData():
 
         # Add temporal encoding to tracks
         wind_track_data_temp = torch.zeros((self.window_size, 9))
-        wind_track_data_temp[:, :8] = wind_track_data
-        wind_track_data_temp[:, 8] = torch.arange(self.window_size)
+        wind_track_data_temp[:, :7] = wind_track_data
+        wind_track_data_temp[:, 7] = torch.arange(self.window_size)
         return wind_track_data_temp
     
     def _get_window_point_data(self, point_data, start_index, end_index, pad_start, pad_end):
@@ -370,6 +376,11 @@ class SlidingWindowTrackingData():
     def __getitem__(self, index):
         track_index = index // self.window_size
         track_data, point_data, gt_data = self.tracking_data[track_index]
+        '''
+        track_data      (180,7)         [x,y,z,l,w,h,r]
+        track_points    (180, 1000, 3)  [x,y,z]
+        gt_data         (8)             [x,y,z,l,w,h,r,s]
+        '''
 
         start_index, end_index = self._get_absolute_window_range(index, track_index)
 
@@ -382,6 +393,12 @@ class SlidingWindowTrackingData():
         rel_foi_index = torch.tensor([self.window_size - index % self.window_size -1])
         gt_data = torch.cat((gt_data, rel_foi_index))
 
+
+        '''
+        wind_track_data     (W,8)         [x,y,z,l,w,h,r,t]
+        wind_track_points   (180, 1000, 4)  [x,y,z,t]
+        gt_data             (9)             [x,y,z,l,w,h,r,s,t]
+        '''
         return wind_track_data, wind_point_data, gt_data
 
     def get(self, sliding_track_index):
@@ -421,9 +438,9 @@ class SlidingWindowTrackingData():
         wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
 
         # Add temporal encoding to tracks
-        wind_track_data_temp = torch.zeros((self.window_size, 9))
-        wind_track_data_temp[:, :8] = wind_track_data
-        wind_track_data_temp[:, 8] = torch.arange(self.window_size)
+        wind_track_data_temp = torch.zeros((self.window_size, 8))
+        wind_track_data_temp[:, :-1] = wind_track_data
+        wind_track_data_temp[:, -1] = torch.arange(self.window_size)
         return wind_track_data_temp
     
     def _get_window_point_data(self, point_data, start_index, end_index, pad_start, pad_end):
@@ -432,8 +449,8 @@ class SlidingWindowTrackingData():
             wind_point_data = point_data[start_index:end_index+1]
             wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
             wind_point_data_temp = torch.zeros((wind_point_data.shape[0], wind_point_data.shape[1], 4))
-            wind_point_data_temp[:, :, :3] = wind_point_data
-            wind_point_data_temp[:, :, 3] = torch.arange(self.window_size).unsqueeze(1).expand(-1, wind_point_data.shape[1])
+            wind_point_data_temp[:, :, :-1] = wind_point_data
+            wind_point_data_temp[:, :, -1] = torch.arange(self.window_size).unsqueeze(1).expand(-1, wind_point_data.shape[1])
         else:
             wind_point_data_temp = point_data # empty tensor
         return wind_point_data_temp

@@ -6,7 +6,7 @@ from torch.nn import functional
 
 class PCTrackNet(nn.Module):
 
-    def __init__(self, track_encoder:str, pc_encoder:str, decoder:str, pc_feat_dim = 3, track_feat_dim=9, pc_out=256, track_out=64, dec_out=16):
+    def __init__(self, track_encoder:str, pc_encoder:str, decoder:str, pc_feat_dim = 3, track_feat_dim=8, pc_out=256, track_out=64, dec_out=16):
         super(PCTrackNet, self).__init__()
 
         self.pc_encoder = get_encoder(encoder_name=pc_encoder, 
@@ -27,23 +27,23 @@ class PCTrackNet(nn.Module):
     def forward(self, tracks, pcs):
         '''
         Inputs: pcs     (B x W x N x 3)
-                tracks  (B x W x 9)
+                tracks  (B x W x 8)
         Outputs:
-                tensor  (B x 8)
+                tensor  (B x 7)
         '''
-
+        print(tracks.shape, pcs.shape)
         pcs_enc = self.pc_encoder(pcs) # Shape: (B x W x pc_out)
         tracks_enc = self.track_encoder(tracks) # Shape: (B x W x track_out)
 
         x = torch.cat((pcs_enc, tracks_enc), dim=-1)  # Shape: (B x W x pc_out+track_out)
 
-        x_dec = self.temporal_decoder(x) # Shape (B x 8)
+        x_dec = self.temporal_decoder(x) # Shape (B x 7)
 
         return x_dec
 
 class PCNet(nn.Module):
 
-    def __init__(self, track_encoder:str, pc_encoder:str, decoder:str, pc_feat_dim = 3, track_feat_dim=9, pc_out=256, track_out=64, dec_out=16):
+    def __init__(self, track_encoder:str, pc_encoder:str, decoder:str, pc_feat_dim = 3, track_feat_dim=8, pc_out=256, track_out=64, dec_out=16):
         super(PCNet, self).__init__()
 
         self.pc_encoder = get_encoder(encoder_name=pc_encoder, 
@@ -58,20 +58,20 @@ class PCNet(nn.Module):
                                             out_size=dec_out)
     def forward(self, tracks, pcs):
         '''
-        Inputs:     pcs  (B x W x N x 9)
+        Inputs:     pcs  (B x W x N x 8)
         
-        Outputs:    tensor  (B x 8)
+        Outputs:    tensor  (B x 7)
         '''
 
         pcs_enc = self.pc_encoder(pcs) # Shape: (B x W x pc_out)
 
-        pcs_dec = self.temporal_decoder(pcs_enc) # Shape (B x 8)
+        pcs_dec = self.temporal_decoder(pcs_enc) # Shape (B x 7)
 
         return pcs_dec
 
 class TrackNet(nn.Module):
 
-    def __init__(self, track_encoder:str, pc_encoder:str, decoder:str, pc_feat_dim = 3, track_feat_dim=9, pc_out=256, track_out=64, dec_out=16):
+    def __init__(self, track_encoder:str, pc_encoder:str, decoder:str, pc_feat_dim = 3, track_feat_dim=8, pc_out=256, track_out=64, dec_out=16):
         super(TrackNet, self).__init__()
 
         self.track_encoder = get_encoder(encoder_name=track_encoder, 
@@ -86,14 +86,14 @@ class TrackNet(nn.Module):
 
     def forward(self, tracks, pcs):
         '''
-        Inputs:     tracks  (B x W x 9)
+        Inputs:     tracks  (B x W x 8)
 
-        Outputs:    tensor  (B x 8)
+        Outputs:    tensor  (B x 7)
         '''
 
         tracks_enc = self.track_encoder(tracks) # Shape: (B x W x track_out)
 
-        tracks_dec = self.temporal_decoder(tracks_enc) # Shape (B x 8)
+        tracks_dec = self.temporal_decoder(tracks_enc) # Shape (B x 7)
 
         return tracks_dec   
     
@@ -149,9 +149,9 @@ class PCEncoder(nn.Module):
         return x
 
 class TrackEncoder(nn.Module):
-    def __init__(self, input_dim=9, out_size=64):
+    def __init__(self, input_dim=8, out_size=64):
         super(TrackEncoder, self).__init__()
-        self.tnet9 = TNet(input_dim, out_size)
+        self.tnet8 = TNet(input_dim, out_size)
         self.conv1 = nn.Conv1d(input_dim, 32, 1)
         self.conv2 = nn.Conv1d(32, 32, 1)
         self.conv3 = nn.Conv1d(32, 64, 1)
@@ -160,8 +160,8 @@ class TrackEncoder(nn.Module):
     def forward(self, x):
         B, W, F = x.shape
         x = x.view(B * W, 1, F)
-        tnet9 = self.tnet9(x)
-        x = torch.bmm(x, tnet9).transpose(1, 2)
+        tnet8 = self.tnet8(x)
+        x = torch.bmm(x, tnet8).transpose(1, 2)
         x = functional.relu(self.conv1(x))
         x = functional.relu(self.conv2(x))
         x = functional.relu(self.conv3(x))
@@ -189,7 +189,7 @@ class DecoderHeads(nn.Module):
         self.fc_rotation = nn.Sequential(
             nn.Linear(in_size, out_size),
             nn.ReLU(),
-            nn.Linear(out_size, 2)
+            nn.Linear(out_size, 1)
         )
         self.fc_gt = nn.Sequential(
             nn.Linear(in_size, out_size),
@@ -204,7 +204,7 @@ class DecoderHeads(nn.Module):
 
         # Per frame center/rotation/score
         center_out = self.fc_center(x)              # (B, W, 3)
-        rotation_out = self.fc_rotation(x)          # (B, W, 2)
+        rotation_out = self.fc_rotation(x)          # (B, W, 1)
         score_out = torch.sigmoid(self.fc_gt(x))    # (B, W, 1)
 
         # All frame max pool size

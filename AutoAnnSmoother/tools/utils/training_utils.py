@@ -12,7 +12,7 @@ class TrainingUtils():
         self.log_out = log_out
         self.center_dim = 3
         self.size_dim = 3
-        self.rotation_dim = 2
+        self.rotation_dim = 1
         self.score_dim = 1
         self.loss_params = conf["loss"]
         self.eval_every = conf["train"]["eval_every"]
@@ -66,20 +66,15 @@ class TrainingUtils():
             optimizer.zero_grad()
             center_out, size_out, rotation_out, score_out = model.forward(tracks, points)
 
-            print(center_out.shape, size_out.shape, rotation_out.shape, score_out.shape)
-
             foi_indexes = self._find_foi_indexes(tracks)
             foi_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
             foi_centers = center_out[torch.arange(center_out.size(0)), foi_indexes]
             foi_rotations = rotation_out[torch.arange(rotation_out.size(0)), foi_indexes]
             foi_score = score_out[torch.arange(score_out.size(0)), foi_indexes]
 
-
-            print(foi_tracks.shape, foi_centers.shape, foi_rotations.shape)
-
             c_hat = foi_tracks[:,0:3] + foi_centers
             s_hat = foi_tracks[:,3:6] + size_out
-            r_hat = foi_tracks[:,6:8] + foi_rotations
+            r_hat = foi_tracks[:,6].unsqueeze(-1) + foi_rotations
 
             loss = self.loss_fn(c_hat.view(-1, self.center_dim),
                                 s_hat.view(-1, self.size_dim),
@@ -118,7 +113,7 @@ class TrainingUtils():
 
                 c_hat = foi_tracks[:,0:3] + foi_centers
                 s_hat = foi_tracks[:,3:6] + size_out
-                r_hat = foi_tracks[:,6:8] + foi_rotations
+                r_hat = foi_tracks[:,6].unsqueeze(-1) + foi_rotations
 
                 loss = self.loss_fn(c_hat.view(-1, self.center_dim),
                                     s_hat.view(-1, self.size_dim),

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import torch
 import copy
 from typing import Any, Dict, Optional
-from smoother.data.common.utils import calculate_giou3d_matrix, l2, convert_to_sine_cosine, convert_to_quaternion
+from smoother.data.common.utils import calculate_giou3d_matrix, l2, convert_to_sine_cosine, convert_to_quaternion,convert_yaw_to_quat
 from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 
@@ -41,7 +41,7 @@ class TrackingBox():
         return {"tracking_id": self.tracking_id,
                 "center": self.center,
                 "size": self.size,
-                "rotation": convert_to_quaternion(self.rotation),
+                "rotation": self.rotation,
                 "is_foi": self.is_foi,
                 "frame_token":self.frame_token,
                 "frame_index":self.frame_index,
@@ -50,13 +50,12 @@ class TrackingBox():
                 "yaw_offset": self.yaw_offset}
     
 
-    def _rotation_matrix_from_sine_cosine(self, sin_yaw, cos_yaw):
-        yaw_angle = np.arctan2(sin_yaw, cos_yaw)
-        rotation_matrix = R.from_euler('z', yaw_angle).as_matrix()
+    def _get_rotation_matrix(self, yaw):
+        rotation_matrix = R.from_euler('z', yaw).as_matrix()[0]
         return rotation_matrix
     
     def contains(self, points: np.ndarray) -> np.ndarray:
-        rotation_matrix = self._rotation_matrix_from_sine_cosine(self.rotation[0], self.rotation[1])
+        rotation_matrix = self._get_rotation_matrix(self.rotation)
         rot_mat_transpose = rotation_matrix.T
         inverse_translate = -rot_mat_transpose @ self.center
         transform = np.hstack((rot_mat_transpose, inverse_translate.reshape(-1, 1)))
@@ -73,8 +72,6 @@ class TrackingBox():
 
         return mask
 
-
-
     def get_points_in_bbox(self, points: np.ndarray) -> np.ndarray:
         mask = self.contains(points)
         return points[mask]
@@ -82,7 +79,7 @@ class TrackingBox():
     def get_corners(self) -> np.ndarray:
         size = np.array(self.size)
         center = np.array(self.center)
-        rotation = Quaternion(self.rotation)
+        rotation = convert_yaw_to_quat(self.rotation)
 
         # Get the 3d corners of the box
         corners = np.array(

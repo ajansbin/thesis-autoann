@@ -24,7 +24,7 @@ class BoxRefinementLoss():
 
     def l1_loss(self, center_preds, size_preds, rotation_preds, gts):
 
-        has_gt = gts[:, -1]
+        has_gt = gts[:, -2]
 
         gt_centers = gts[:,:3]
         center_loss = F.l1_loss(center_preds,gt_centers, reduction="none").sum(-1)
@@ -32,20 +32,14 @@ class BoxRefinementLoss():
         gt_sizes = gts[:,3:6]
         size_loss = F.l1_loss(size_preds,gt_sizes, reduction="none").sum(-1)
 
-        rotation_sin = rotation_preds[:,0]
-        rotation_cos = rotation_preds[:,1]
-        gt_rotation_sin = gts[:,6]
-        gt_rotation_cos = gts[:,7]
-        rotation_loss = F.l1_loss(rotation_sin,gt_rotation_sin, reduction="none") + F.l1_loss(rotation_cos,gt_rotation_cos, reduction="none")
+        gt_rotations = gts[:,6].unsqueeze(-1)
+        yaw_err = self.get_yaw_err(rotation_preds, gt_rotations).squeeze(-1)
         
         #only compute center, size and rotation loss on boxes with gt
         n_gt = has_gt.sum()
         center_loss = torch.mul(center_loss, has_gt).sum() / n_gt
         size_loss = torch.mul(size_loss, has_gt).sum() / n_gt
-
-        print("rot1", rotation_loss)
-        rotation_loss = torch.mul(rotation_loss, has_gt).sum() / n_gt
-        print("rot2", rotation_loss)
+        rotation_loss = torch.mul(yaw_err, has_gt).sum() / n_gt
 
         return center_loss, size_loss, rotation_loss
 
@@ -56,7 +50,7 @@ class BoxRefinementLoss():
         raise NotImplementedError
 
     def compute_score_loss(self, score_pred, gts):
-        gt_score = gts[:,-1]
+        gt_score = gts[:,-2]
         loss = nn.BCELoss()
         out = loss(score_pred.squeeze(-1),gt_score)
         return out
@@ -73,7 +67,7 @@ class BoxRefinementLoss():
     def evaluate_model(self, dets, refined_dets, gt_anns):
 
         #Only compute MSE for detection with ground-truth associations
-        non_zero_gt_indices = torch.nonzero(torch.sum(gt_anns, dim=1), as_tuple=True)[0]
+        non_zero_gt_indices = torch.nonzero(gt_anns[:,-2], as_tuple=True)[0]
         n_non_zero = len(non_zero_gt_indices)
 
         ### CENTER MSE
@@ -100,17 +94,15 @@ class BoxRefinementLoss():
         sos_ref_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none')
 
         ### ROTATION MSE
-        dets_rotations = dets[non_zero_gt_indices,6:8]
-        ref_rotations = refined_dets[non_zero_gt_indices,6:8]
-        gt_rotations = gt_anns[non_zero_gt_indices,6:8]
-        det_yaw_err = self.get_yaw_err(dets_rotations, gt_rotations)
-        ref_yaw_err = self.get_yaw_err(ref_rotations, gt_rotations)
-        sos_det_rotation = torch.pow(det_yaw_err, 2)
-        sos_ref_rotation = torch.pow(ref_yaw_err, 2)
+        dets_rotations = dets[non_zero_gt_indices,6]
+        ref_rotations = refined_dets[non_zero_gt_indices,6]
+        gt_rotations = gt_anns[non_zero_gt_indices,6]
+
+        sos_det_rotation = self.get_yaw_err(dets_rotations, gt_rotations).pow(2)
+        sos_ref_rotation = self.get_yaw_err(ref_rotations, gt_rotations).pow(2)
 
         ### SCORE 
-     
-        gt_score = gt_anns[:,-1]
+        gt_score = gt_anns[:,-2]
         refined_dets = torch.where(refined_dets[:,-1]<0.5, 0.0, 1.0)
         acc_ref = torch.sum(refined_dets == gt_score).float()
         
@@ -119,8 +111,8 @@ class BoxRefinementLoss():
             "rmse_refinement_center": sos_ref_center.sum(-1),
             "rmse_dets_size":sos_det_size.sum(-1),
             "rmse_refinement_size":sos_ref_size.sum(-1),
-            "rmse_dets_rotation":sos_det_rotation.sum(-1),
-            "rmse_refinement_rotation":sos_ref_rotation.sum(-1),
+            "rmse_dets_rotation":sos_det_rotation,
+            "rmse_refinement_rotation":sos_ref_rotation,
             "rmse_det_x":sos_det_x,
             "rmse_det_y":sos_det_y,
             "rmse_det_z":sos_det_z,
@@ -131,8 +123,14 @@ class BoxRefinementLoss():
             "acc_ref": acc_ref
         }, n_non_zero
     
+    def get_yaw_err(self, pred_yaws, gt_yaws):
+        pi = torch.tensor(np.pi)
+        err = torch.abs(pred_yaws - gt_yaws)
+        err = torch.where(err>pi,2*pi-err, err)
+        return err 
+    
 
-    def get_yaw_err(self, predictions, gts):
+    def get_yaw_err_spot(self, predictions, gts):
         yaws_sincos_unsized = predictions
         yaws_sincos = yaws_sincos_unsized / torch.norm(yaws_sincos_unsized, dim=1, keepdim=True)
         yaws = torch.atan2(yaws_sincos[:, 0], yaws_sincos[:, 1]).view(-1, 1)
@@ -141,6 +139,5 @@ class BoxRefinementLoss():
         yaws_sincos = yaws_sincos_unsized / torch.norm(yaws_sincos_unsized, dim=1, keepdim=True)
         gt_yaws = torch.atan2(yaws_sincos[:, 0], yaws_sincos[:, 1]).view(-1, 1)
         yaw_err = torch.norm((yaws - gt_yaws + np.pi) % (2*np.pi) - np.pi, dim=1)
-        #yaw_err = torch.norm((yaws - gt_yaws) % (2*np.pi), dim=1)
         
         return yaw_err

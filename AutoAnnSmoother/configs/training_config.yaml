@@ -27,10 +27,10 @@ data:
   remove_bottom_center: true # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: true
   score_dist_temp: 1
-  pc_offset: true
+  pc_offset: false
   transformations:
     center_offset: true
-    yaw_offset: false #not implemented yet
+    yaw_offset: true
     normalize:
       normalize: true
       center:
@@ -40,8 +40,8 @@ data:
         mean: [2.5877273679628194, 1.0347822035160879, 0.9536876676924065]
         stdev: [3.1708958713662074, 1.0381670406742867, 1.0549146278354404]
       rotation:      
-        mean: [-0.3136310277276827, -0.013401212689278484]
-        stdev: [0.5951111005230132, 0.24225834247964198]
+        mean: [0.0]#[-0.3136310277276827, -0.013401212689278484]
+        stdev: [1.0]#[0.5951111005230132, 0.24225834247964198]
       score:
         mean: [0.0]
         stdev: [1] 

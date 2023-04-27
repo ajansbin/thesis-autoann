@@ -160,7 +160,7 @@ class SmoothingTrainer():
                                     pc_encoder=pc_encoder, 
                                     decoder=decoder_name, 
                                     pc_feat_dim=4, 
-                                    track_feat_dim=9, 
+                                    track_feat_dim=8, 
                                     pc_out=pc_out_size, 
                                     track_out=track_out_size, 
                                     dec_out=dec_out_size)

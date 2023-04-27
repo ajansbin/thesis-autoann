@@ -3,24 +3,27 @@ import numpy as np
 import tqdm
 from smoother.data.common.dataclasses import TrackingBox
 from smoother.data.zod_data import ZodTrackingResults
+from smoother.data.common.utils import convert_to_yaw
 from smoother.io.config_utils import load_config
 from zod import ZodSequences
 from collections import defaultdict
 import multiprocessing
+import copy
 
 
 
 def preprocess(data_path, version, split, save_dir, tracking_result_path):
     assert os.path.exists(tracking_result_path), 'Error: The result file does not exist!'
-    assert version in ['full', 'mini'] 
+    assert version in ['full', 'mini']
     zod = ZodSequences(data_path, version)
 
     assert split in ['train', 'val']
     seq_tokens = zod.get_split(split)
 
     conf_path = '/AutoAnnSmoother/configs/training_config.yaml'
+    conf_path = '/home/s0001671/workspace/thesis-autoann/AutoAnnSmoother/configs/training_config.yaml'
     conf = load_config(conf_path)
-    tracking_results = ZodTrackingResults(tracking_result_path, conf, version, split, data_path)
+    tracking_results = ZodTrackingResults(tracking_result_path, conf, version, split, data_path=data_path)
 
     preprocess_and_save_point_clouds(tracking_results, save_dir)
 
@@ -29,7 +32,7 @@ def preprocess(data_path, version, split, save_dir, tracking_result_path):
 
 def process_sequence(sequence_token, tracking_results, N_max, save_dir):
     track_point_clouds = defaultdict(list)
-    sequence_frames = tracking_results.get_frames_in_sequence(sequence_token)
+    sequence_frames = tracking_results.get_frames_in_sequence(sequence_token)[:-1]
 
     for frame_index, frame_token in enumerate(sequence_frames):
         frame_pred_boxes = tracking_results.get_pred_boxes_from_frame(frame_token)
@@ -38,10 +41,14 @@ def process_sequence(sequence_token, tracking_results, N_max, save_dir):
 
         points = tracking_results.get_points_in_frame(frame_token, frame_index)
 
-        for box in frame_pred_boxes:
+        for b in frame_pred_boxes:
+            box = copy.deepcopy(b)
             box["is_foi"] = False
             box["frame_index"] = frame_index
             box["frame_token"] = frame_token
+            if tracking_results.remove_bottom_center:
+                box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
+            box['rotation'] = convert_to_yaw(box['rotation'])
             tracking_box = TrackingBox.from_dict(box)
 
             points_masked = tracking_box.get_points_in_bbox(points)
@@ -57,13 +64,13 @@ def process_sequence(sequence_token, tracking_results, N_max, save_dir):
         processed_point_cloud_list = []
         for pc in point_cloud_list:
             num_points = len(pc)
-            if num_points >= N_max:
+            if num_points > 0:
                 # Sample N_max points from the point cloud
-                idx = np.random.choice(num_points, N_max, replace=False)
+                idx = np.random.choice(num_points, N_max, replace=True)
                 sampled_pc = pc[idx]
             else:
                 # Pad the point clouds with zeros to have the same number of points (N_max)
-                sampled_pc = np.pad(pc, ((0, N_max - num_points), (0, 0)), mode='constant')
+                sampled_pc = np.zeros((N_max, 3))
             processed_point_cloud_list.append(sampled_pc)
 
         # Reshape the final combined point cloud array to have the shape (T, N_max, 3)
@@ -71,6 +78,7 @@ def process_sequence(sequence_token, tracking_results, N_max, save_dir):
         combined_point_cloud = np.stack(processed_point_cloud_list, axis=0).reshape(T, N_max, 3)
 
         np.save(save_path, combined_point_cloud)
+        print("Saved to", save_path )
 
 def preprocess_and_save_point_clouds(tracking_results, save_dir):
     if not os.path.exists(save_dir):

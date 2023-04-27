@@ -4,6 +4,7 @@ from zod import ZodSequences
 from zod.constants import Lidar
 from smoother.data.loading.loader import load_prediction
 from smoother.data.loading.zod_loader import load_gt
+from zod.data_classes.geometry import Pose
 
 OBJECT_CLASSES_DYNAMIC = [
     "Vehicle",
@@ -119,13 +120,28 @@ class ZodTrackingResults(TrackingResults):
                 lidar_frame_index = i
         return lidar_frame_index
     
-    def get_lidar_data_in_frame(self, frame_token, frame_index):
+    def get_lidar_data_in_frame(self, frame_token, frame_index, lidar=True):
         seq_token = frame_token[0:6]
         seq = self.zod[seq_token]
-        points = seq.info.lidar_frames[Lidar.VELODYNE][frame_index].read()
-        return points
+        
+        lidar_frame = seq.info.lidar_frames[Lidar.VELODYNE][frame_index]
+        lidar_data = lidar_frame.read()
+        if lidar:
+            return lidar_data
+        
+        # Transform to world-coordinates
+        calib = seq.calibration
+        ex = calib.get_extrinsics(Lidar.VELODYNE)
+        lidar_data.transform(ex)
+
+        timestamp = lidar_frame.time.timestamp()
+        #core_timestamp = lidar_data.core_timestamp
+        core_ego_pose = Pose(seq.ego_motion.get_poses(timestamp))
+        lidar_data.transform(core_ego_pose)
+
+        return lidar_data
     
     def get_points_in_frame(self, frame_token, frame_index):
-        points = self.get_lidar_data_in_frame(frame_token, frame_index).points
+        points = self.get_lidar_data_in_frame(frame_token, frame_index, lidar=False).points
         return points
 

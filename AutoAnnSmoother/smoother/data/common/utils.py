@@ -6,6 +6,16 @@ from zod.data_classes.box import Box3D
 from zod.constants import Lidar
 import torch
 
+def convert_to_yaw(q_elem):
+    assert type(q_elem) == list or type(q_elem) == np.ndarray
+    assert len(q_elem) == 4
+    q = Quaternion(q_elem)
+    yaw = q.yaw_pitch_roll[0]
+
+    return [yaw]
+
+def convert_yaw_to_quat(yaw:list):
+    return Quaternion(axis=[0, 0, 1], angle=yaw[0])
 
 def convert_to_sine_cosine(q_elem):
     assert type(q_elem) == list or type(q_elem) == np.ndarray

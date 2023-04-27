@@ -11,17 +11,14 @@ class Transformation():
     
 class ToTensor(Transformation):
 
-    def __init__(self, device=torch.device('cpu')):
-        self.device = device
-
     def transform(self, x) -> torch.tensor:
-        return torch.tensor(x,dtype=torch.float32).to(self.device)
+        return torch.tensor(x,dtype=torch.float32)
 
 class Normalize(Transformation):
 
-    def __init__(self, means:list, stds:list, device=torch.device('cpu')):
-        self.means = torch.tensor(means, dtype=torch.float32).to(device)
-        self.stds = torch.tensor(stds, dtype=torch.float32).to(device)
+    def __init__(self, means:list, stds:list):
+        self.means = torch.tensor(means, dtype=torch.float32)
+        self.stds = torch.tensor(stds, dtype=torch.float32)
 
         self.start_index = 0
         self.end_index = -1
@@ -87,23 +84,23 @@ class YawOffset(Transformation):
 
     def transform(self,x:torch.tensor) -> torch.tensor:
         if len(x.shape) > 1:
-            x[self.start_index:self.end_index,6:8] = x[self.start_index:self.end_index,6:8] - self.offset        
+            x[self.start_index:self.end_index,6] = x[self.start_index:self.end_index,6] - self.offset        
         else:
-            x[6:8] = x[6:8] - self.offset
+            x[6] = x[6] - self.offset
         return x
     
     def untransform(self,x:torch.tensor) -> torch.tensor:
         if len(x.shape) > 1:
-            x[self.start_index:self.end_index,6:8] = x[self.start_index:self.end_index,6:8] + self.offset        
+            x[self.start_index:self.end_index,6] = x[self.start_index:self.end_index,6] + self.offset        
         else:
-            x[6:8] = x[6:8] + self.offset
+            x[6] = x[6] + self.offset
         return x
     
     def set_offset(self, x:list):
         if torch.is_tensor(x):
-            self.offset = x[6:8].clone().detach()
+            self.offset = x[6].clone().detach()
         else:
-            self.offset = torch.tensor(x[6:8], dtype=torch.float32)
+            self.offset = torch.tensor(x[6], dtype=torch.float32)
 
     def set_start_and_end_index(self,start_index,end_index):
         self.start_index = start_index
