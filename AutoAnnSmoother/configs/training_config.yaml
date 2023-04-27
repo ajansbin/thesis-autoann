@@ -19,13 +19,13 @@ data:
   split: train
   window_size: 25
   sliding_window: false
-  sw_augmentation: true # this can not be true used if sliding_window=True
+  sw_augmentation: false # this can not be true used if sliding_window=True
   association_metric: l2 #[giou, l2]
   association_thresholds:
     giou: 0.0
     l2: 2
   remove_bottom_center: true # if increases the z dimension by half the height for the detections
-  remove_non_gt_tracks: true
+  remove_non_gt_tracks: false
   score_dist_temp: 1
   pc_offset: false
   transformations:

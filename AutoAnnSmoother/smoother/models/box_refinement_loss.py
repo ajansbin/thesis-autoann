@@ -34,7 +34,7 @@ class BoxRefinementLoss():
 
         gt_rotations = gts[:,6].unsqueeze(-1)
         yaw_err = self.get_yaw_err(rotation_preds, gt_rotations).squeeze(-1)
-        
+
         #only compute center, size and rotation loss on boxes with gt
         n_gt = has_gt.sum()
         center_loss = torch.mul(center_loss, has_gt).sum() / n_gt

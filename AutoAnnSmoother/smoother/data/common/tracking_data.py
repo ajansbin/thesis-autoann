@@ -57,7 +57,7 @@ class TrackingData():
         return len(self.data_samples)
 
     def __getitem__(self, index):
-        track = self.data_samples[index]
+        track = copy.deepcopy(self.data_samples[index])
 
         gt_data = self._create_gt_data(track)
         track_data = self._create_track_data(track)
@@ -146,7 +146,7 @@ class TrackingData():
         if "pc_path" in self.tracking_results.config["data"]:
             root_pc_path = self.tracking_results.config["data"]["pc_path"]
         else:
-            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/full_train'
+            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/mini_train'
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
@@ -281,7 +281,7 @@ class WindowTrackingData():
     def __getitem__(self, index):
         track_data, point_data, gt_data = self.tracking_data[index]
 
-        start_index, end_index = self._get_absolute_window_range(index)
+        start_index, end_index, rel_foi_index = self._get_absolute_window_range(index)
 
         start_index, end_index, pad_start, pad_end = self._get_pad_range(start_index, end_index, len(track_data))
 
@@ -289,9 +289,8 @@ class WindowTrackingData():
 
         wind_point_data = self._get_window_point_data(point_data, start_index, end_index, pad_start, pad_end)
 
-        rel_foi_index = torch.tensor([int((self.window_size-1)/2)+1])
+        rel_foi_index = torch.tensor([rel_foi_index]) #torch.tensor([int((self.window_size-1)/2)])
         gt_data = torch.cat((gt_data, rel_foi_index))
-
 
         return wind_track_data, wind_point_data, gt_data
     
@@ -308,9 +307,11 @@ class WindowTrackingData():
             window_start = int(-(self.window_size-1)/2)
             window_end = int((self.window_size-1)/2)
 
+        rel_foi_index = abs(window_start)
+
         start_index = foi_index + window_start
         end_index = foi_index + window_end
-        return start_index, end_index
+        return start_index, end_index, rel_foi_index
     
     def _get_pad_range(self, start_index, end_index, track_length):
         if start_index < 0:
@@ -334,9 +335,9 @@ class WindowTrackingData():
         wind_track_data = torch.cat((torch.zeros(pad_start, wind_track_data.shape[1]), wind_track_data, torch.zeros(pad_end, wind_track_data.shape[1])), dim=0)
 
         # Add temporal encoding to tracks
-        wind_track_data_temp = torch.zeros((self.window_size, 9))
-        wind_track_data_temp[:, :7] = wind_track_data
-        wind_track_data_temp[:, 7] = torch.arange(self.window_size)
+        wind_track_data_temp = torch.zeros((self.window_size, 8))
+        wind_track_data_temp[:, :-1] = wind_track_data
+        wind_track_data_temp[:, -1] = torch.arange(self.window_size)
         return wind_track_data_temp
     
     def _get_window_point_data(self, point_data, start_index, end_index, pad_start, pad_end):
@@ -345,8 +346,8 @@ class WindowTrackingData():
             wind_point_data = point_data[start_index:end_index+1]
             wind_point_data = torch.cat((torch.zeros(pad_start, wind_point_data.shape[1], wind_point_data.shape[2]), wind_point_data, torch.zeros(pad_end, wind_point_data.shape[1], wind_point_data.shape[2])), dim=0)
             wind_point_data_temp = torch.zeros((wind_point_data.shape[0], wind_point_data.shape[1], 4))
-            wind_point_data_temp[:, :, :3] = wind_point_data
-            wind_point_data_temp[:, :, 3] = torch.arange(self.window_size).unsqueeze(1).expand(-1, wind_point_data.shape[1])
+            wind_point_data_temp[:, :, :-1] = wind_point_data
+            wind_point_data_temp[:, :, -1] = torch.arange(self.window_size).unsqueeze(1).expand(-1, wind_point_data.shape[1])
         else:
             wind_point_data_temp = point_data # empty tensor
         return wind_point_data_temp

@@ -31,7 +31,6 @@ class PCTrackNet(nn.Module):
         Outputs:
                 tensor  (B x 7)
         '''
-        print(tracks.shape, pcs.shape)
         pcs_enc = self.pc_encoder(pcs) # Shape: (B x W x pc_out)
         tracks_enc = self.track_encoder(tracks) # Shape: (B x W x track_out)
 
