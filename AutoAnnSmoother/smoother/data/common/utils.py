@@ -55,9 +55,9 @@ def PolyArea2D(pts):
 
 def giou3d(gts, pred):
     centers, sizes, rotations = gts[:, 0:3], gts[:, 3:6], gts[:, 6:8]
-    gt_boxes = [Box3D(c, s, convert_to_quaternion(r), Lidar) for c, s, r in zip(centers, sizes, rotations)]
+    gt_boxes = [Box3D(c, s, convert_yaw_to_quat(r), Lidar) for c, s, r in zip(centers, sizes, rotations)]
 
-    pred_center, pred_size, pred_rotation = pred[0:3], pred[3:6], convert_to_quaternion(pred[6:8])
+    pred_center, pred_size, pred_rotation = pred[0:3], pred[3:6], convert_yaw_to_quat(pred[6:8])
     pred_box = Box3D(pred_center, pred_size, pred_rotation, Lidar)
 
     gt_corners_bev = np.array([box.corners_bev for box in gt_boxes])

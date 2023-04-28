@@ -146,7 +146,7 @@ class TrackingData():
         if "pc_path" in self.tracking_results.config["data"]:
             root_pc_path = self.tracking_results.config["data"]["pc_path"]
         else:
-            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/mini_train'
+            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)

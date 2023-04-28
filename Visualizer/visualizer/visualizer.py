@@ -1,7 +1,7 @@
 from smoother.data.zod_data import ZodTrackingResults
 from smoother.data.common.tracking_data import WindowTrackingData
 from smoother.data.common.transformations import ToTensor, Normalize, CenterOffset, YawOffset
-from smoother.data.common.utils import convert_to_quaternion
+from smoother.data.common.utils import convert_yaw_to_quat #convert_to_quaternion
 from smoother.io.config_utils import load_config
 from zod.constants import Camera, Lidar, Anonymization, AnnotationProject, EGO, CoordinateFrame
 from matplotlib import pyplot as plt
@@ -14,7 +14,8 @@ import torch
 from PIL import Image
 import os
 import copy
-
+from zod.data_classes.geometry import Pose
+import numpy as np
 
 class VisualizeResults():
 
@@ -59,17 +60,16 @@ class VisualizeResults():
         camera_frame, lidar_frame = frames[track_camera_index]
         image = camera_frame.read()
 
-        if show_lidar:
-            masked_lidar = self._get_masked_lidar(track_box, lidar_frame, seq)
-            #masked_lidar = self._get_masked_lidar(track_box, lidar_frame, points, seq)
-            image = self._add_lidar_to_image(image, masked_lidar, seq)
-
         if show_det:
-            track_box3d = self._create_track_box(track_box, seq)
+            track_box3d = self._create_track_box(track_box, lidar_frame, seq)
             image = self._add_box_to_image(image, track_box3d, seq, color=self.det_color, line_thickness=self.line_thickness)
 
+        if show_lidar:
+            masked_lidar = self._get_masked_lidar(track_box3d, track_box.frame_token, track_box.frame_index, lidar_frame, seq)
+            image = self._add_lidar_to_image(image, masked_lidar, seq)
+
         if show_ref:
-            ref_box, score = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, seq, score_thresh)
+            ref_box, score = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, lidar_frame, seq, score_thresh)
             if ref_box:
                 image = self._add_box_to_image(image, ref_box, seq, color=self.ref_color, line_thickness=self.line_thickness)
             else:
@@ -77,7 +77,7 @@ class VisualizeResults():
 
         if show_gt:
             if track.has_gt:
-                gt_box = self._get_gt_box(track, seq)
+                gt_box = self._get_gt_box(track, lidar_frame, seq)
                 image = self._add_box_to_image(image, gt_box, seq, color=self.gt_color, line_thickness=self.line_thickness)
             else:
                 print("Track does not have gt, skipping gt-box")
@@ -121,17 +121,17 @@ class VisualizeResults():
                     image = self._add_lidar_to_image(image, masked_lidar, seq)
 
                 if show_det:
-                    track_box3d = self._create_track_box(track_box, seq)
+                    track_box3d = self._create_track_box(track_box, lidar_frame, seq)
                     image = self._add_box_to_image(image, track_box3d, seq, color=self.det_color, line_thickness=self.line_thickness)
 
                 if show_ref:
-                    ref_box, score = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, seq, score_thresh)
+                    ref_box, score = self._get_refined_box(self.trained_model, self.track_data, track_index, frame_track_index, lidar_frame, seq, score_thresh)
                     if ref_box:
                         image = self._add_box_to_image(image, ref_box, seq, color=self.ref_color, line_thickness=self.line_thickness)
 
                 if lidar_index == track_same_seq.foi_index and show_gt:
                     if track_same_seq.has_gt:
-                        gt_box = self._get_gt_box(track_same_seq, seq)
+                        gt_box = self._get_gt_box(track_same_seq, lidar_frame, seq)
                         image = self._add_box_to_image(image, gt_box, seq, color=self.gt_color, line_thickness=self.line_thickness)
                     else:
                         print("Track does not have gt, skipping gt-box")
@@ -181,24 +181,23 @@ class VisualizeResults():
 
         return camera_lidar_map
     
-    def _create_track_box(self, track_box, seq):
-        box = Box3D(track_box.center, track_box.size, convert_to_quaternion(track_box.rotation), Lidar.VELODYNE)
-        box.convert_to(Camera.FRONT, seq.calibration)
-        return box
+    def _create_track_box(self, track_box, lidar_frame, seq):
+        track_box = self._get_box(track_box.center, track_box.size, convert_yaw_to_quat(track_box.rotation), lidar=False, lidar_frame=lidar_frame, seq=seq)
 
-    def _get_gt_box(self, track, seq):
+        return track_box
+
+    def _get_gt_box(self, track, lidar_frame, seq):
         # function code
         gt_box_dict = track.gt_box
         gt_translation = gt_box_dict["translation"]
         gt_size = gt_box_dict["size"]
-        gt_rotation = convert_to_quaternion(gt_box_dict["rotation"])
+        gt_rotation = convert_yaw_to_quat(gt_box_dict["rotation"])
 
-        gt_box = Box3D(gt_translation, gt_size, gt_rotation, Lidar.VELODYNE)
-        gt_box.convert_to(Camera.FRONT, seq.calibration)
+        gt_box = self._get_box(gt_translation, gt_size, gt_rotation, lidar=False, lidar_frame=lidar_frame, seq=seq)
 
         return gt_box
     
-    def _get_refined_box(self, model, track_data, track_index,frame_track_index, seq, score_thresh):
+    def _get_refined_box(self, model, track_data, track_index,frame_track_index, lidar_frame, seq, score_thresh):
         track_obj = track_data.get(track_index)
         old_foi_index = copy.copy(track_data.get(track_index).foi_index)
 
@@ -218,7 +217,7 @@ class VisualizeResults():
         mid_wind = track.shape[0] // 2 + 1
         c_hat = track[mid_wind, 0:3] + center_out[mid_wind]
         s_hat = track[mid_wind, 3:6] + size_out
-        r_hat = track[mid_wind, 6:8] + rot_out[mid_wind]
+        r_hat = track[mid_wind, 6].unsqueeze(-1) + rot_out[mid_wind]
 
         score = score_out[mid_wind]
 
@@ -229,30 +228,51 @@ class VisualizeResults():
         #unnormalize
         for transformation in reversed(self.transformations):
             if type(transformation) == CenterOffset:
-                transformation.set_offset(track_data.get(track_index).center_offset)
+                transformation.set_offset(track_data.get(track_index).boxes[0].center)
                 transformation.set_start_and_end_index(0, -1)
             if type(transformation) == Normalize:
                 transformation.set_start_and_end_index(0, -1)
             model_out = transformation.untransform(model_out)
 
         # create refined box and add to image
-        ref_box = Box3D(model_out[0:3].numpy(), model_out[3:6].numpy(), convert_to_quaternion(model_out[6:8].numpy()), Lidar.VELODYNE)
-
-        ref_box.convert_to(Camera.FRONT, seq.calibration)
+        center = model_out[0:3].numpy()
+        size = model_out[3:6].numpy()
+        rotation = convert_yaw_to_quat(model_out[6:7].numpy())
+        ref_box = self._get_box(center, size, rotation, lidar=False, lidar_frame=lidar_frame, seq=seq)
 
         track_data.get(track_index).foi_index = old_foi_index
 
         return (ref_box, score)
     
-    def _get_masked_lidar(self, track_box, lidar_frame, seq):
-        core_lidar = self.result_data.get_lidar_data_in_frame(track_box.frame_token, track_box.frame_index)
-        core_lidar = lidar_frame.read()
-        masked_points = track_box.get_points_in_bbox(core_lidar.points)
+    def _get_box(self, center, size, rotation, lidar=False, lidar_frame=None, seq=None):
+        if lidar:
+            return Box3D(center, size, rotation, Lidar.VELODYNE)
+        box = Box3D(center, size, rotation, EGO)
+        core_timestamp = lidar_frame.time.timestamp()
+        core_ego_pose = Pose(seq.ego_motion.get_poses(core_timestamp))
+        box._transform_inv(core_ego_pose, EGO)
+        box.convert_to(Lidar.VELODYNE, seq.calibration)
 
-        masked_lidar = LidarData(masked_points, core_lidar.timestamps, core_lidar.intensity, core_lidar.diode_idx, core_lidar.core_timestamp)
-        masked_lidar.transform(seq.calibration.get_extrinsics(EGO))
+        return box
 
-        return masked_lidar
+    
+    def _get_masked_lidar(self, track_box3d, frame_token, frame_index, lidar_frame, seq):
+        core_lidar = self.result_data.get_lidar_data_in_frame(frame_token, frame_index, lidar=True)
+        #core_lidar = lidar_frame.read()
+
+        points = core_lidar.points
+        print(points.shape)
+        print("0", np.min(points[:,0]), np.max(points[:,0]))
+        print("1", np.min(points[:,1]), np.max(points[:,1]))
+        print("2", np.min(points[:,2]), np.max(points[:,2]))
+
+        #masked_points = track_box3d.get_points_in_bbox(points)
+        #print(masked_points.shape)
+
+        masked_lidar = LidarData(points, core_lidar.timestamps, core_lidar.intensity, core_lidar.diode_idx, core_lidar.core_timestamp)
+        #masked_lidar.transform(seq.calibration.get_extrinsics(EGO))
+
+        return core_lidar
 
     def _plot_image(self, image):
         plt.rcParams["figure.figsize"] = [20, 10]
@@ -273,6 +293,11 @@ class VisualizeResults():
     def _add_transformations(self, transformations_dict):
         transformations = [ToTensor()]
 
+        if transformations_dict["center_offset"]:
+            transformations.append(CenterOffset())
+        if transformations_dict["yaw_offset"]:
+            transformations.append(YawOffset())
+
         if transformations_dict["normalize"]["normalize"]:
             center_mean = transformations_dict["normalize"]["center"]["mean"]
             center_stdev = transformations_dict["normalize"]["center"]["stdev"]
@@ -285,10 +310,6 @@ class VisualizeResults():
             means = center_mean + size_mean + rotation_mean
             stdev = center_stdev + size_stdev + rotation_stdev
             transformations.append(Normalize(means,stdev))
-        if transformations_dict["center_offset"]:
-            transformations.append(CenterOffset())
-        if transformations_dict["yaw_offset"]:
-            transformations.append(YawOffset())
 
         return transformations
     
@@ -309,7 +330,7 @@ class VisualizeResults():
                                     pc_encoder=pc_encoder, 
                                     decoder=decoder_name, 
                                     pc_feat_dim=4, 
-                                    track_feat_dim=9, 
+                                    track_feat_dim=8, 
                                     pc_out=pc_out_size, 
                                     track_out=track_out_size, 
                                     dec_out=dec_out_size)

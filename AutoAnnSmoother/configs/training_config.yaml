@@ -21,7 +21,7 @@ data:
     world_coord: true
     motion_compensate: true
   window_size: 25
-  sliding_window: false
+  sliding_window: true
   sw_augmentation: false # this can not be true used if sliding_window=True
   association_metric: l2 #[giou, l2]
   association_thresholds:
@@ -37,18 +37,14 @@ data:
     normalize:
       normalize: true
       center:
-        mean: [6.08003332e+01, -5.48336047e-01, 1.43935423e-01] #offset
-        stdev: [91.38101561, 25.21201567, 2.18470847] #offset
-        #mean: [1.73462339e+02,9.52634063e-02,7.67952893e-01]
-        #stdev: [136.05763403,41.14419256,3.29430988]
+        mean: [60.8189294, -0.525552826, 0.147465098]
+        stdev: [91.48130902, 25.21834783,  2.18292611]
       size:
-        mean: [4.91675939e+00, 2.00343822e+00, 1.82337010e+00] #offset
-        stdev: [2.51673582, 0.30871848, 0.65036061] #offset
-        #mean: [4.91675939e+00, 2.00343822e+00, 1.82337010e+00]
-        #stdev: [2.51673582, 0.30871848,0.65036061]
+        mean: [4.90367473, 2.00175622, 1.82049045]
+        stdev: [2.48815663, 0.30652962, 0.64556516]
       rotation:      
-        mean: [0] #[5.11720420e-02]
-        stdev: [1] #[1.25795325]
+        mean: [0.0] #[0.051840574]
+        stdev: [1.0] #[1.26104637]
       score:
         mean: [0.0]
         stdev: [1] 

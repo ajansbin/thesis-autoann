@@ -107,9 +107,9 @@ class TNet(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(k, 32),
             nn.ReLU(),
-            nn.Linear(32, 64),
-            nn.ReLU(),
-            nn.Linear(64, out_size),
+            #nn.Linear(32, 64),
+            #nn.ReLU(),
+            nn.Linear(32, out_size),
             nn.ReLU(),
         )
         self.fc = nn.Linear(out_size, k * k)
@@ -126,45 +126,46 @@ class TNet(nn.Module):
 
 
 class PCEncoder(nn.Module):
-    def __init__(self, input_dim=4, out_size=256):
+    def __init__(self, input_dim=4, out_size=256, dropout_rate=0.5):
         super(PCEncoder, self).__init__()
         self.tnet4 = TNet(input_dim, out_size)
         self.conv1 = nn.Conv1d(input_dim, 64, 1)
-        self.conv2 = nn.Conv1d(64, 64, 1)
-        self.conv3 = nn.Conv1d(64, 128, 1)
-        self.conv4 = nn.Conv1d(128, out_size, 1)
+        self.conv2 = nn.Conv1d(64, 128, 1)
+        self.conv3 = nn.Conv1d(128, 256, 1)
+        self.conv4 = nn.Conv1d(256, out_size, 1)
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         B, W, N, F = x.shape
         x = x.view(B * W, N, F) # B*W, N,F
         tnet4 = self.tnet4(x)
         x = torch.bmm(x, tnet4).transpose(1,2)
-        x = functional.relu(self.conv1(x))
-        x = functional.relu(self.conv2(x))
-        x = functional.relu(self.conv3(x))
-        x = self.conv4(x)
+        x = functional.relu(self.dropout(self.conv1(x)))
+        x = functional.relu(self.dropout(self.conv2(x)))
+        x = functional.relu(self.dropout(self.conv3(x)))
+        x = self.dropout(self.conv4(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(B, W, -1)
         return x
 
 class TrackEncoder(nn.Module):
-    def __init__(self, input_dim=8, out_size=64):
+    def __init__(self, input_dim=8, out_size=64, dropout_rate=0.5):
         super(TrackEncoder, self).__init__()
         self.tnet8 = TNet(input_dim, out_size)
         self.conv1 = nn.Conv1d(input_dim, 32, 1)
-        self.conv2 = nn.Conv1d(32, 32, 1)
-        self.conv3 = nn.Conv1d(32, 64, 1)
-        self.conv4 = nn.Conv1d(64, out_size, 1)
+        self.conv2 = nn.Conv1d(32, 64, 1)
+        self.conv3 = nn.Conv1d(64, out_size, 1)
+
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         B, W, F = x.shape
         x = x.view(B * W, 1, F)
         tnet8 = self.tnet8(x)
         x = torch.bmm(x, tnet8).transpose(1, 2)
-        x = functional.relu(self.conv1(x))
-        x = functional.relu(self.conv2(x))
-        x = functional.relu(self.conv3(x))
-        x = self.conv4(x)
+        x = functional.relu(self.dropout(self.conv1(x)))
+        x = functional.relu(self.dropout(self.conv2(x)))
+        x = self.dropout(self.conv3(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(B, W, -1)
         return x
@@ -245,7 +246,7 @@ class TransformerDecoder(nn.Module):
     def __init__(self, in_size, out_size):
         super(TransformerDecoder, self).__init__()
 
-        t_encoder_layer = nn.TransformerEncoderLayer(d_model=in_size, nhead=8, dim_feedforward=in_size*4)
+        t_encoder_layer = nn.TransformerEncoderLayer(d_model=in_size, nhead=8, dim_feedforward=in_size*4, dropout=0.5)
         self.transformer = nn.TransformerEncoder(encoder_layer=t_encoder_layer, num_layers=2)
         self.heads = DecoderHeads(in_size, out_size)
 
