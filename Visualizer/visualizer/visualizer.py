@@ -18,7 +18,7 @@ import copy
 
 class VisualizeResults():
 
-    def __init__(self, conf_path, version, split, result_path, anno_path, data_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False):
+    def __init__(self, conf_path, version, split, result_path, data_path, model_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False, sw_refine=False, anno_path=""):
         self.conf_path = conf_path
         self.version = version
         self.split = split
@@ -61,6 +61,7 @@ class VisualizeResults():
 
         if show_lidar:
             masked_lidar = self._get_masked_lidar(track_box, lidar_frame, seq)
+            #masked_lidar = self._get_masked_lidar(track_box, lidar_frame, points, seq)
             image = self._add_lidar_to_image(image, masked_lidar, seq)
 
         if show_det:
@@ -111,7 +112,10 @@ class VisualizeResults():
                 track_box = track_same_seq.boxes[frame_track_index]
 
                 if show_lidar:
+                    _, points, _ = self.track_data[track_index]
+                    points = points[:, :, :3]
                     masked_lidar = self._get_masked_lidar(track_box, lidar_frame, seq)
+                    #masked_lidar = self._get_masked_lidar(track_box, lidar_frame, points, seq)
                     if masked_lidar.points.shape[0] == 1 or masked_lidar.points.shape[0] > 50000:
                         continue
                     image = self._add_lidar_to_image(image, masked_lidar, seq)
@@ -160,7 +164,6 @@ class VisualizeResults():
 
         track_lidar_index = track.starting_frame_index + track_box_index
         track_camera_index = camera_lidar_map.index(track_lidar_index)
-
         return track, seq, track_camera_index, track_box
 
     def _get_camera_lidar_index_map(self, seq):

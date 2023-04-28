@@ -40,7 +40,6 @@ class ZodTrackingResults(TrackingResults):
         self.assoc_metric = config["data"]["association_metric"]
         self.assoc_thres = config["data"]["association_thresholds"][self.assoc_metric]
 
-
         assert split in ['train', 'val']
         self.seq_tokens = self.zod.get_split(split)
         # Store the FoI-indexes
@@ -48,6 +47,8 @@ class ZodTrackingResults(TrackingResults):
         for seq_token in self.seq_tokens:
             self.foi_indexes[seq_token] = self._get_foi_index(seq_token)
 
+        self.motion_comp = config["data"]["annotations"]["motion_compensate"]
+        self.world_coord = config["data"]["annotations"]["world_coord"]
         print("Loading prediction and ground-truths ...")
         self.pred_boxes, self.meta = self.load_tracking_predictions(self.tracking_results_path)
         self.gt_boxes = self.load_gt_detections()
@@ -59,7 +60,11 @@ class ZodTrackingResults(TrackingResults):
         return load_prediction(tracking_results_path)
     
     def load_gt_detections(self):
-        return load_gt(self.zod, self.anno_path, self.seq_tokens, verbose=True)
+        return load_gt(self.zod, 
+                       self.seq_tokens, 
+                       motion_compensate=self.motion_comp, 
+                       world_coord=self.world_coord, 
+                       verbose=True)
 
     def map_seq_id_to_gt(self, gt_boxes):
         gt_frames = {}

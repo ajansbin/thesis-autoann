@@ -5,11 +5,14 @@ import numpy as np
 
 class BoxRefinementLoss():
 
-    def __init__(self, loss_config):
+    def __init__(self, loss_config, normalize_conf):
         self.loss_type = loss_config["type"]
         self.loss_weights = loss_config["weight"]
 
         self.loss_fn = self._get_loss_fn(self.loss_type)
+        self.std_center = normalize_conf['center']['stdev']
+        self.std_size = normalize_conf['size']['stdev']
+        self.std_rotation = normalize_conf['rotation']['stdev']
 
     def _get_loss_fn(self, loss_type):
         if loss_type.lower() == 'l1':
@@ -40,7 +43,6 @@ class BoxRefinementLoss():
         center_loss = torch.mul(center_loss, has_gt).sum() / n_gt
         size_loss = torch.mul(size_loss, has_gt).sum() / n_gt
         rotation_loss = torch.mul(yaw_err, has_gt).sum() / n_gt
-
         return center_loss, size_loss, rotation_loss
 
     def iou_loss(self, center_pred, size_pred, rotation_pred, gts):
@@ -64,17 +66,17 @@ class BoxRefinementLoss():
         score_loss *= self.loss_weights["score"]
         return center_loss + size_loss + rotation_loss + score_loss
         
-    def evaluate_model(self, dets, refined_dets, gt_anns):
+    def evaluate_model(self, dets, refined_dets, gt_anns, device):
 
         #Only compute MSE for detection with ground-truth associations
         non_zero_gt_indices = torch.nonzero(gt_anns[:,-2], as_tuple=True)[0]
         n_non_zero = len(non_zero_gt_indices)
 
         ### CENTER MSE
-        dets_centers = dets[non_zero_gt_indices,:3]
-        ref_centers = refined_dets[non_zero_gt_indices,:3]
-        gt_centers = gt_anns[non_zero_gt_indices,:3]
-
+        std_center = torch.tensor(self.std_center, dtype=torch.float32).to(device)
+        dets_centers = dets[non_zero_gt_indices,:3].mul(std_center)
+        ref_centers = refined_dets[non_zero_gt_indices,:3].mul(std_center)
+        gt_centers = gt_anns[non_zero_gt_indices,:3].mul(std_center)
         sos_det_center = F.mse_loss(dets_centers, gt_centers, reduction='none')
         sos_ref_center = F.mse_loss(ref_centers, gt_centers, reduction='none')
 
@@ -86,18 +88,19 @@ class BoxRefinementLoss():
         sos_ref_z = sos_ref_center[:,2]
 
         ### SIZE MSE
-        dets_sizes = dets[non_zero_gt_indices,3:6]
-        ref_sizes = refined_dets[non_zero_gt_indices,3:6]
-        gt_sizes = gt_anns[non_zero_gt_indices,3:6]
-
+        std_size = torch.tensor(self.std_size, dtype=torch.float32).to(device)
+        dets_sizes = dets[non_zero_gt_indices,3:6].mul(std_size)
+        ref_sizes = refined_dets[non_zero_gt_indices,3:6].mul(std_size)
+        gt_sizes = gt_anns[non_zero_gt_indices,3:6].mul(std_size)
         sos_det_size = F.mse_loss(dets_sizes, gt_sizes, reduction='none')
         sos_ref_size = F.mse_loss(ref_sizes, gt_sizes, reduction='none')
 
         ### ROTATION MSE
-        dets_rotations = dets[non_zero_gt_indices,6]
-        ref_rotations = refined_dets[non_zero_gt_indices,6]
-        gt_rotations = gt_anns[non_zero_gt_indices,6]
+        std_rotation = torch.tensor(self.std_rotation, dtype=torch.float32).to(device)
 
+        dets_rotations = dets[non_zero_gt_indices,6].mul(std_rotation)
+        ref_rotations = refined_dets[non_zero_gt_indices,6].mul(std_rotation)
+        gt_rotations = gt_anns[non_zero_gt_indices,6].mul(std_rotation)
         sos_det_rotation = self.get_yaw_err(dets_rotations, gt_rotations).pow(2)
         sos_ref_rotation = self.get_yaw_err(ref_rotations, gt_rotations).pow(2)
 
@@ -125,7 +128,7 @@ class BoxRefinementLoss():
     
     def get_yaw_err(self, pred_yaws, gt_yaws):
         pi = torch.tensor(np.pi)
-        err = torch.abs(pred_yaws - gt_yaws)
+        err = torch.abs(pred_yaws - gt_yaws) % (2*pi)
         err = torch.where(err>pi,2*pi-err, err)
         return err 
     

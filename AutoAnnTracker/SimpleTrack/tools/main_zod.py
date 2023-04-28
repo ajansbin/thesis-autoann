@@ -11,21 +11,23 @@ from pyquaternion import Quaternion
 from zod.data_classes.box import Box3D
 from zod.constants import Lidar, EGO
 
+def parse_args():
 
-parser = argparse.ArgumentParser()
-# running configurations
-parser.add_argument('--name', type=str, default='debug')
-parser.add_argument('--det_name', type=str, default='cp')
-parser.add_argument('--process', type=int, default=1)
-parser.add_argument('--visualize', action='store_true', default=False)
-parser.add_argument('--start_frame', type=int, default=0, help='start at a middle frame for debug')
-#parser.add_argument('--obj_types', default='car,bus,trailer,truck,pedestrian,bicycle,motorcycle')
-parser.add_argument('--obj_types', default='Vehicle') #,Pedestrian,VulnerableVehicle')
-# paths
-parser.add_argument('--config_path', type=str, default='configs/config.yaml', help='config file path, follow the path in the documentation')
-parser.add_argument('--result_folder', type=str, default='../nu_mot_results/')
-parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
-args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    # running configurations
+    parser.add_argument('--name', type=str, default='debug')
+    parser.add_argument('--det_name', type=str, default='cp')
+    parser.add_argument('--process', type=int, default=1)
+    parser.add_argument('--visualize', action='store_true', default=False)
+    parser.add_argument('--start_frame', type=int, default=0, help='start at a middle frame for debug')
+    #parser.add_argument('--obj_types', default='car,bus,trailer,truck,pedestrian,bicycle,motorcycle')
+    parser.add_argument('--obj_types', default='Vehicle') #,Pedestrian,VulnerableVehicle')
+    # paths
+    parser.add_argument('--config_path', type=str, default='configs/config.yaml', help='config file path, follow the path in the documentation')
+    parser.add_argument('--result_folder', type=str, default='../nu_mot_results/')
+    parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
+    args = parser.parse_args()
+    return args
 
 
 def zod_array2mot_bbox(b):
@@ -40,7 +42,6 @@ def zod_array2mot_bbox(b):
     mot_bbox = BBox(
     x=zod_box.center[0], y=zod_box.center[1], z=zod_box.center[2],
     w=zod_box.size[1], l=zod_box.size[0], h=zod_box.size[2],
-    #w=zod_box.size[0], l=zod_box.size[1], h=zod_box.size[2],
     o=zod_box.orientation.yaw_pitch_roll[0]
     )
     
@@ -178,6 +179,7 @@ def main(name, obj_types, config_path, data_folder, det_data_folder, result_fold
 
 
 if __name__ == '__main__':
+    args = parse_args()
     result_folder = os.path.join(args.result_folder, args.name)
     os.makedirs(result_folder, exist_ok=True)
     summary_folder = os.path.join(result_folder, 'summary')

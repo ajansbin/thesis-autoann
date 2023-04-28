@@ -3,13 +3,14 @@ from pyquaternion import Quaternion
 from mot_3d.data_protos import BBox, Validity
 from tqdm import tqdm
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument('--name', type=str, default='debug')
-parser.add_argument('--obj_types', default='Vehicle')#,Pedestrian,VulnerableVehicle')
-parser.add_argument('--result_folder', type=str, default='../nu_mot_results/')
-parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
-args = parser.parse_args()
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--name', type=str, default='debug')
+    parser.add_argument('--obj_types', default='Vehicle')#,Pedestrian,VulnerableVehicle')
+    parser.add_argument('--result_folder', type=str, default='../nu_mot_results/')
+    parser.add_argument('--data_folder', type=str, default='../datasets/nuscenes/')
+    args = parser.parse_args()
+    return args
 
 
 def bbox_array2zod_format(bbox_array):
@@ -86,6 +87,7 @@ def main(name, obj_types, data_folder, result_folder, output_folder):
 
 
 if __name__ == '__main__':
+    args = parse_args()
     result_folder = os.path.join(args.result_folder, args.name)
     obj_types = args.obj_types.split(',')
     output_folder = os.path.join(result_folder, 'results')

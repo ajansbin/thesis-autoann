@@ -15,8 +15,11 @@ model:
 ### Dataclass ###
 data:
   type: zod # one of [nuscenes, zod]
-  version: full
+  version: mini
   split: train
+  annotations:
+    world_coord: true
+    motion_compensate: true
   window_size: 25
   sliding_window: false
   sw_augmentation: false # this can not be true used if sliding_window=True
@@ -24,24 +27,28 @@ data:
   association_thresholds:
     giou: 0.0
     l2: 2
-  remove_bottom_center: true # if increases the z dimension by half the height for the detections
+  remove_bottom_center: false # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: false
   score_dist_temp: 1
-  pc_offset: false
+  pc_offset: true
   transformations:
     center_offset: true
     yaw_offset: true
     normalize:
       normalize: true
       center:
-        mean: [-1.0408938187128578, 15.676385645189473, -0.5681853294492015]
-        stdev: [8.827627848858757, 19.47008377654335, 0.6877734215244837]
+        mean: [6.08003332e+01, -5.48336047e-01, 1.43935423e-01] #offset
+        stdev: [91.38101561, 25.21201567, 2.18470847] #offset
+        #mean: [1.73462339e+02,9.52634063e-02,7.67952893e-01]
+        #stdev: [136.05763403,41.14419256,3.29430988]
       size:
-        mean: [2.5877273679628194, 1.0347822035160879, 0.9536876676924065]
-        stdev: [3.1708958713662074, 1.0381670406742867, 1.0549146278354404]
+        mean: [4.91675939e+00, 2.00343822e+00, 1.82337010e+00] #offset
+        stdev: [2.51673582, 0.30871848, 0.65036061] #offset
+        #mean: [4.91675939e+00, 2.00343822e+00, 1.82337010e+00]
+        #stdev: [2.51673582, 0.30871848,0.65036061]
       rotation:      
-        mean: [0.0]#[-0.3136310277276827, -0.013401212689278484]
-        stdev: [1.0]#[0.5951111005230132, 0.24225834247964198]
+        mean: [0] #[5.11720420e-02]
+        stdev: [1] #[1.25795325]
       score:
         mean: [0.0]
         stdev: [1] 
@@ -53,21 +60,21 @@ data:
       scale_max: 1.1
 
 
-### Training Specific ###
+### Trainingdata Specific ###
 train:
   learning_rate: 1.0E-4
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 4
+  batch_size: 8
   n_workers: 8
-  n_epochs: 20
+  n_epochs: 200
   eval_every: 1
   seed: 0
 
 test:
   data:
-    version: full
-    split: val
+    version: mini
+    split: train
 
 loss:
   type: "l1" # one of [l1, iou, giou]

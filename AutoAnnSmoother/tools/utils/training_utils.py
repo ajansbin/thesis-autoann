@@ -22,7 +22,8 @@ class TrainingUtils():
                                         else "cpu")
 
         loss_conf = self.conf["loss"]
-        self.brl = BoxRefinementLoss(loss_conf)
+        normalize_conf = self.conf['data']['transformations']['normalize']
+        self.brl = BoxRefinementLoss(loss_conf, normalize_conf)
         self.loss_fn = self.brl.loss
 
 
@@ -125,18 +126,16 @@ class TrainingUtils():
                     foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :-1] #removes temporal encoding
                     out_size = self.center_dim + self.size_dim + self.rotation_dim + self.score_dim
                     box_out = torch.cat((c_hat, s_hat, r_hat, foi_score), dim=-1)
-                    metrics, scores, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size-1), box_out.view(-1, out_size), gt_anns.float())                
+                    metrics, scores, n_non_zero = self.brl.evaluate_model(foi_dets.view(-1, out_size-1), box_out.view(-1, out_size), gt_anns.float(), self.device)                
                     total_non_zero += n_non_zero
                     for metric, sos in metrics.items():
                         val_metrics[metric] = val_metrics.get(metric,0) + sos.sum()
-
                     for metric, acc in scores.items():
                         score_metrics[metric] = score_metrics.get(metric, 0) + acc
                         
         if epoch % self.eval_every == 0:
             for metric, sos in val_metrics.items():
                 val_metrics[metric] = (sos / total_non_zero) ** (1 / 2)
-            
             for metric, acc in score_metrics.items():
                 val_metrics[metric] = acc / len(val_loader.dataset)
         

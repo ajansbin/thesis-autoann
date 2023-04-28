@@ -289,6 +289,7 @@ class WindowTrackingData():
 
         wind_point_data = self._get_window_point_data(point_data, start_index, end_index, pad_start, pad_end)
 
+        rel_foi_index = torch.tensor([int((self.window_size-1)/2)])
         rel_foi_index = torch.tensor([rel_foi_index]) #torch.tensor([int((self.window_size-1)/2)])
         gt_data = torch.cat((gt_data, rel_foi_index))
 

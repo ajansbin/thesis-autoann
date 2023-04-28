@@ -24,8 +24,9 @@ class SmoothingTrainer():
         self.conf = self._get_config(self.conf_path)
 
         # Update conf with pc path
-        #self.conf["data"]["pc_path"] = '/AutoAnnSmoother/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_mini_train'
-        self.conf["data"]["pc_path"] = str(os.path.join('preprocessed', self.pc_name))
+        #self.conf["data"]["pc_path"] = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
+        self.conf["data"]["pc_path"] = 'storage/smoothing/autoannsmoothing/preprocessed_world/mini_train'
+        #self.conf["data"]["pc_path"] = str(os.path.join('preprocessed', self.pc_name))
         self.anno_path = anno_path
 
         self.data_type = self.conf["data"]["type"] # nuscenes / zod

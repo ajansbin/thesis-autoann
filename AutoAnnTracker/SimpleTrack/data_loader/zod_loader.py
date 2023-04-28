@@ -44,7 +44,6 @@ def zod_array2mot_bbox(b):
     mot_bbox = BBox(
     x=zod_box.center[0], y=zod_box.center[1], z=zod_box.center[2],
     w=zod_box.size[1], l=zod_box.size[0], h=zod_box.size[2],
-    #w=zod_box.size[0], l=zod_box.size[1], h=zod_box.size[2],
     o=zod_box.orientation.yaw_pitch_roll[0]
     )
 
