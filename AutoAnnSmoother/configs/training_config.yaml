@@ -23,35 +23,34 @@ data:
   window_size: 25
   sliding_window: true
   sw_augmentation: false # this can not be true used if sliding_window=True
-  association_metric: l2 #[giou, l2]
+  association_metric: giou #[giou, l2]
   association_thresholds:
     giou: 0.0
     l2: 2
   remove_bottom_center: false # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: false
-  score_dist_temp: 1
   pc_offset: true
   transformations:
     center_offset: true
     yaw_offset: true
     normalize:
-      normalize: true
+      normalize: false
       center:
-        mean: [60.8189294, -0.525552826, 0.147465098]
-        stdev: [91.48130902, 25.21834783,  2.18292611]
+        mean: [0.0, 0.0, 0.0]
+        stdev: [1.0, 1.0,  1.0]
       size:
-        mean: [4.90367473, 2.00175622, 1.82049045]
-        stdev: [2.48815663, 0.30652962, 0.64556516]
+        mean: [0.0, 0.0, 0.0]
+        stdev: [1.0, 1.0, 1.0]
       rotation:      
-        mean: [0.0] #[0.051840574]
-        stdev: [1.0] #[1.26104637]
+        mean: [0.0]
+        stdev: [1.0]
       score:
         mean: [0.0]
         stdev: [1] 
     points:
-      points_shift: true
+      points_shift: false
       shift_max_size: 1
-      points_scale: true
+      points_scale: false
       scale_min: 0.9
       scale_max: 1.1
 
@@ -61,9 +60,9 @@ train:
   learning_rate: 1.0E-4
   weight_decay: 1.0E-5
   train_size: 0.8
-  batch_size: 8
+  batch_size: 150
   n_workers: 8
-  n_epochs: 200
+  n_epochs: 30
   eval_every: 1
   seed: 0
 

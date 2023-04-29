@@ -1,18 +1,37 @@
 from smoother.io.config_utils import load_config
 from smoother.io.logging_utils import configure_loggings
 from tools.utils.training_utils import TrainingUtils
-from smoother.data.common.tracking_data import SlidingWindowTrackingData, WindowTrackingData
-from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize, PointsShift, PointsScale
+from smoother.data.common.tracking_data import (
+    WindowTrackingData,
+    TRACK_FEAT_DIM,
+    POINT_FEAT_DIM,
+)
+from smoother.data.common.transformations import (
+    ToTensor,
+    CenterOffset,
+    YawOffset,
+    Normalize,
+    PointsShift,
+    PointsScale,
+)
 from smoother.models.pc_track_net import PCTrackNet, TrackNet, PCNet
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
 import os
+import json
 
 
-class SmoothingTrainer():
-
-    def __init__(self, tracking_results_path, conf_path, data_path, pc_name, save_dir, run_name, anno_path):
+class SmoothingTrainer:
+    def __init__(
+        self,
+        tracking_results_path,
+        conf_path,
+        data_path,
+        pc_name,
+        save_dir,
+        run_name,
+    ):
         print("---Initializing SmoothingTrainer class---")
         self.tracking_results_path = tracking_results_path
         self.conf_path = conf_path
@@ -24,19 +43,18 @@ class SmoothingTrainer():
         self.conf = self._get_config(self.conf_path)
 
         # Update conf with pc path
-        #self.conf["data"]["pc_path"] = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
-        self.conf["data"]["pc_path"] = 'storage/smoothing/autoannsmoothing/preprocessed_world/mini_train'
-        #self.conf["data"]["pc_path"] = str(os.path.join('preprocessed', self.pc_name))
-        self.anno_path = anno_path
+        # self.conf["data"]["pc_path"] = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
+        # self.conf["data"]["pc_path"] = "storage/smoothing/autoannsmoothing/preprocessed_world/mini_train"
+        self.conf["data"]["pc_path"] = str(os.path.join("preprocessed", self.pc_name))
 
-        self.data_type = self.conf["data"]["type"] # nuscenes / zod
+        self.data_type = self.conf["data"]["type"]  # nuscenes / zod
         self.data_version = self.conf["data"]["version"]
         self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
         self.sliding_window = self.conf["data"]["sliding_window"]
         self.sw_augmentation = self.conf["data"]["sw_augmentation"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
-        
+
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
         self.use_track = self.conf["model"]["track"]["use_track"]
 
@@ -54,8 +72,6 @@ class SmoothingTrainer():
         self.train_data_model = None
         self.val_data_model = None
         self.model = None
-        self.n_train_batches = 0
-        self.n_val_batches = 0
         self.trained_model = None
         self.result_dict = {}
 
@@ -68,26 +84,65 @@ class SmoothingTrainer():
     def load_data(self):
         print("---Loading data---")
         # Load datatype specific results from tracking
-        if self.data_type == 'nuscenes':
+        if self.data_type == "nuscenes":
             from smoother.data.nuscenes_data import NuscTrackingResults
-            self.tracking_results = NuscTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
-        elif self.data_type == 'zod':
+
+            self.tracking_results = NuscTrackingResults(
+                self.tracking_results_path,
+                self.conf,
+                self.data_version,
+                self.split,
+                self.data_path,
+            )
+        elif self.data_type == "zod":
             from smoother.data.zod_data import ZodTrackingResults
-            self.tracking_results = ZodTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.anno_path, self.data_path)
+
+            self.tracking_results = ZodTrackingResults(
+                self.tracking_results_path,
+                self.conf,
+                self.data_version,
+                self.split,
+                self.data_path,
+            )
         else:
-            raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
-        
-        transformations, points_transformations = self._add_transformations(self.conf["data"]["transformations"])
+            raise NotImplementedError(
+                f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'."
+            )
+
+        transformations, points_transformations = self._add_transformations(
+            self.conf["data"]["transformations"]
+        )
 
         # Get train and val split sequences
-        train_seqs, val_seqs = self._get_train_val_seq_split(self.tracking_results.seq_tokens)
+        train_seqs, val_seqs = self._get_train_val_seq_split(
+            self.tracking_results.seq_tokens
+        )
         # Load data model
-        if self.sliding_window:
-            self.train_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
-            self.val_data_model = SlidingWindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
-        else:
-            self.train_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=train_seqs)
-            self.val_data_model = WindowTrackingData(self.tracking_results,self.window_size, transformations, points_transformations, remove_non_gt_tracks = self.remove_non_gt_tracks, seqs=val_seqs)
+        self.train_data_model = WindowTrackingData(
+            tracking_results=self.tracking_results,
+            window_size=self.window_size,
+            sliding_window=self.sliding_window,
+            sw_augmentation=self.sw_augmentation,
+            use_pc=self.use_pc,
+            transformations=transformations,
+            points_transformations=points_transformations,
+            remove_non_foi_tracks=True,
+            remove_non_gt_tracks=self.remove_non_gt_tracks,
+            seqs=train_seqs,
+        )
+
+        self.val_data_model = WindowTrackingData(
+            tracking_results=self.tracking_results,
+            window_size=self.window_size,
+            sliding_window=self.sliding_window,
+            sw_augmentation=self.sw_augmentation,
+            use_pc=self.use_pc,
+            transformations=transformations,
+            points_transformations=points_transformations,
+            remove_non_foi_tracks=True,
+            remove_non_gt_tracks=self.remove_non_gt_tracks,
+            seqs=val_seqs,
+        )
 
     def _get_train_val_seq_split(self, seqs: list):
         # Create a list of indices
@@ -110,7 +165,6 @@ class SmoothingTrainer():
 
         return train_seqs, val_seqs
 
-
     def _add_transformations(self, transformations_dict):
         transformations = [ToTensor()]
 
@@ -121,12 +175,10 @@ class SmoothingTrainer():
             size_stdev = transformations_dict["normalize"]["size"]["stdev"]
             rotation_mean = transformations_dict["normalize"]["rotation"]["mean"]
             rotation_stdev = transformations_dict["normalize"]["rotation"]["stdev"]
-            #score_mean = transformations_dict["normalize"]["score"]["mean"]
-            #score_stdev = transformations_dict["normalize"]["score"]["stdev"]
 
-            means = center_mean + size_mean + rotation_mean #+ score_mean
-            stdev = center_stdev + size_stdev + rotation_stdev #+ score_stdev
-            transformations.append(Normalize(means,stdev))
+            means = center_mean + size_mean + rotation_mean
+            stdev = center_stdev + size_stdev + rotation_stdev
+            transformations.append(Normalize(means, stdev))
         if transformations_dict["center_offset"]:
             transformations.append(CenterOffset())
         if transformations_dict["yaw_offset"]:
@@ -142,7 +194,7 @@ class SmoothingTrainer():
             points_transformations.append(PointsScale(scale_min, scale_max))
 
         return transformations, points_transformations
-    
+
     def load_model(self):
         print("---Loading model---")
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
@@ -157,15 +209,16 @@ class SmoothingTrainer():
 
         model_class = self._get_model(self.use_pc, self.use_track)
 
-        self.model = model_class(track_encoder=track_encoder, 
-                                    pc_encoder=pc_encoder, 
-                                    decoder=decoder_name, 
-                                    pc_feat_dim=4, 
-                                    track_feat_dim=8, 
-                                    pc_out=pc_out_size, 
-                                    track_out=track_out_size, 
-                                    dec_out=dec_out_size)
-
+        self.model = model_class(
+            track_encoder=track_encoder,
+            pc_encoder=pc_encoder,
+            decoder=decoder_name,
+            pc_feat_dim=POINT_FEAT_DIM,
+            track_feat_dim=TRACK_FEAT_DIM,
+            pc_out=pc_out_size,
+            track_out=track_out_size,
+            dec_out=dec_out_size,
+        )
 
     def _get_model(self, use_pc, use_track):
         if use_pc and use_track:
@@ -179,24 +232,31 @@ class SmoothingTrainer():
     def train(self):
         print("---Starting training---")
 
-        optimizer = optim.Adam(self.model.parameters(), lr=self.lr,  weight_decay=self.wd)
+        optimizer = optim.Adam(
+            self.model.parameters(), lr=self.lr, weight_decay=self.wd
+        )
         tu = TrainingUtils(self.conf, self.log_out)
 
-        train_dataloader = DataLoader(self.train_data_model, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
-        val_dataloader = DataLoader(self.val_data_model, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
+        train_dataloader = DataLoader(
+            self.train_data_model,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.n_workers,
+        )
+        val_dataloader = DataLoader(
+            self.val_data_model,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.n_workers,
+        )
 
-        self.n_train_batches = len(train_dataloader)
-        self.n_val_batches = len(val_dataloader)
-
-        self.trained_model, train_losses, val_losses = tu.training_loop(self.model,optimizer,self.n_epochs, train_dataloader, val_dataloader)
-        self.result_dict = {"train_losses": train_losses, "val_losses":val_losses}
+        self.trained_model, train_losses, val_losses = tu.training_loop(
+            self.model, optimizer, self.n_epochs, train_dataloader, val_dataloader
+        )
+        self.result_dict = {"train_losses": train_losses, "val_losses": val_losses}
         print("---Finished training---")
 
-
-
     def save_results(self):
-        import os
-        import json
         # Save to file
         if self.use_pc and self.use_track:
             model_type = "pc-track"
@@ -205,12 +265,10 @@ class SmoothingTrainer():
         elif self.use_track:
             model_type = "track"
 
-        save_dir_full = os.path.join(self.save_dir,model_type)  
+        save_dir_full = os.path.join(self.save_dir, model_type)
         if not os.path.exists(save_dir_full):
             os.mkdir(save_dir_full)
 
-        model_name = f"{model_type}_{self.data_type}_{self.split}"
-        
         # save model
         model_path = os.path.join(save_dir_full, self.run_name + "_model.pth")
         torch.save(self.trained_model.state_dict(), model_path)

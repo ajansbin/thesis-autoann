@@ -48,9 +48,9 @@ def load_gt(zod, scene_tokens, motion_compensate=True, world_coord=True, verbose
 
             box = {
                 "sample_token": seq_id,
-                "translation": box.center,
-                "size": box.size,
-                "rotation": box.orientation.elements,
+                "translation": list(box.center),
+                "size": list(box.size),
+                "rotation": list(box.orientation.elements),
                 "velocity": [0.0,0.0],
                 "detection_name":ann_obj.name,
                 "detection_score":-1.0,  # GT samples do not have a score.

@@ -19,14 +19,12 @@ import numpy as np
 
 class VisualizeResults():
 
-    def __init__(self, conf_path, version, split, result_path, data_path, model_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False, sw_refine=False, anno_path=""):
+    def __init__(self, conf_path, version, split, result_path, data_path, remove_non_foi_tracks=False, remove_non_gt_tracks=False, sw_refine=False):
         self.conf_path = conf_path
         self.version = version
         self.split = split
         self.result_path = result_path
-        self.anno_path = anno_path
         self.data_path = data_path
-        #self.model_path = model_path
 
         self.det_color = (0,0,255)      # Blue
         self.ref_color = (255,255,0)    # Yellow
@@ -36,7 +34,7 @@ class VisualizeResults():
         self.conf = load_config(self.conf_path)
 
         print(self.data_path)
-        self.result_data = ZodTrackingResults(self.result_path, self.conf, self.version, self.split, self.anno_path, self.data_path)
+        self.result_data = ZodTrackingResults(self.result_path, self.conf, self.version, self.split, self.data_path)
         self.transformations = self._add_transformations(self.conf["data"]["transformations"])
         self.window_size = self.conf["data"]["window_size"]
         start_ind = int(-(self.window_size-1)/2)
