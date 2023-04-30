@@ -288,7 +288,7 @@ class WindowTrackingData:
         print(f"Finished loading {len(self.tracking_data) * self.slides} data samples!")
 
     def __len__(self):
-        return len(self.tracking_data) * self.window_size
+        return len(self.tracking_data) * self.slides
 
     def __getitem__(self, index):
         track_index = index // self.slides
