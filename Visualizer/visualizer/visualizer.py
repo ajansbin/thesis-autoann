@@ -55,7 +55,6 @@ class VisualizeResults:
 
         self.conf = load_config(self.conf_path)
 
-        print(self.data_path)
         self.result_data = ZodTrackingResults(
             self.result_path, self.conf, self.version, self.split, self.data_path
         )
@@ -218,7 +217,6 @@ class VisualizeResults:
                 ):
                     continue
 
-                # print(lidar_index, track_same_seq.starting_frame_index)
                 frame_track_index = lidar_index - track_same_seq.starting_frame_index
                 track_box = track_same_seq.boxes[frame_track_index]
 
@@ -381,11 +379,9 @@ class VisualizeResults:
 
         track_obj.foi_index = frame_track_index + track_obj.starting_frame_index
         track, point, gt = track_data[track_index]
-        print(track.unsqueeze(0).shape, point.unsqueeze(0).shape)
         center_out, size_out, rot_out, score_out = model.forward(
             track.unsqueeze(0), point.unsqueeze(0)
         )
-        print(center_out.shape, size_out.shape, rot_out.shape, score_out.shape)
 
         center_out = center_out.squeeze(0)
         size_out = size_out.squeeze(0)
@@ -415,15 +411,6 @@ class VisualizeResults:
         ).float()
         model_out[0:3] = model_out[0:3] + center_offset
         model_out[6:7] = model_out[6:7] + rotation_offset
-
-        # unnormalize
-        # for transformation in reversed(self.transformations):
-        #     if type(transformation) == CenterOffset:
-        #         transformation.set_offset(track_data.get(track_index).boxes[0].center)
-        #         transformation.set_start_and_end_index(0, -1)
-        #     if type(transformation) == Normalize:
-        #         transformation.set_start_and_end_index(0, -1)
-        #     model_out = transformation.untransform(model_out)
 
         # create refined box and add to image
         center = model_out[0:3].numpy()
