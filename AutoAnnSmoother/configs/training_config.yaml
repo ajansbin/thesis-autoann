@@ -21,8 +21,9 @@ data:
     world_coord: true
     motion_compensate: true
   window_size: 25
-  sliding_window: true
-  sw_augmentation: false # this can not be true used if sliding_window=True
+  n_slides: 25
+  #sliding_window: true
+  #sw_augmentation: false # this can not be true used if sliding_window=True
   association_metric: giou #[giou, l2]
   association_thresholds:
     giou: 0.0

@@ -252,8 +252,7 @@ class WindowTrackingData:
         self,
         tracking_results,
         window_size,
-        sliding_window=True,
-        sw_augmentation=False,
+        n_slides,
         use_pc=True,
         transformations=[],
         points_transformations=[],
@@ -263,17 +262,13 @@ class WindowTrackingData:
     ):
         self.tracking_results = tracking_results
         self.window_size = window_size
-        self.sliding_window = sliding_window
-        self.sw_augmentation = sw_augmentation
+        self.n_slides = n_slides
         self.use_pc = use_pc
         self.transformations = transformations
         self.points_transformations = points_transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
         self.seqs = None
-
-        # Number of slides to be used during training
-        self.slides = self.window_size if self.sliding_window else 1
 
         print("Loading sequences...")
         self.tracking_data = TrackingData(
@@ -285,13 +280,15 @@ class WindowTrackingData:
             seqs,
         )
 
-        print(f"Finished loading {len(self.tracking_data) * self.slides} data samples!")
+        print(
+            f"Finished loading {len(self.tracking_data) * self.n_slides} data samples!"
+        )
 
     def __len__(self):
-        return len(self.tracking_data) * self.slides
+        return len(self.tracking_data) * self.n_slides
 
     def __getitem__(self, index):
-        track_index = index // self.slides
+        track_index = index // self.n_slides
         track_data, point_data, gt_data = self.tracking_data[track_index]
         """
         track_data      (180,7)         [x,y,z,l,w,h,r]
@@ -299,8 +296,8 @@ class WindowTrackingData:
         gt_data         (8)             [x,y,z,l,w,h,r,s]
         """
 
-        start_index, end_index = self._get_absolute_window_range(
-            index, track_index, self.sliding_window, self.sw_augmentation
+        start_index, end_index, rel_foi_index = self._get_absolute_window_range(
+            index, track_index, self.n_slides
         )
 
         start_index, end_index, pad_start, pad_end = self._get_pad_range(
@@ -316,7 +313,6 @@ class WindowTrackingData:
         )
 
         # Add foi_index marker last to gt_data
-        rel_foi_index = self._get_rel_foi_index(index, self.sliding_window)
         gt_data = torch.cat((gt_data, rel_foi_index))
 
         offset_track_data, offset_point_data, offset_gt_data = self._get_offset_data(
@@ -331,31 +327,30 @@ class WindowTrackingData:
         return offset_track_data, offset_point_data, offset_gt_data
 
     def get(self, index) -> Tracklet:
-        track_index = index // self.slides
+        track_index = index // self.n_slides
         return self.tracking_data.get(track_index)
 
-    def _get_absolute_window_range(
-        self, index, track_index, sliding_window, sw_augmentation
-    ):
+    def _get_absolute_window_range(self, index, track_index, n_slides):
         foi_index = self.tracking_data.get_foi_index(track_index)
 
-        if sliding_window:
-            # Slide the window starting from foi as last frame
-            window_start = index % self.slides - self.slides + 1
-            window_end = window_start + self.window_size - 1
-        elif sw_augmentation:
+        if n_slides > 1:
             # Randomly take a window surrounding foi
             window_start = random.randint(-self.window_size + 1, 0)
             window_end = window_start + self.window_size - 1
+            # Slide the window starting from foi as last frame
+            # window_start = index % self.slides - self.slides + 1
+            # window_end = window_start + self.window_size - 1
         else:
             # Always set foi as middle-frame in window
             window_start = int(-(self.window_size - 1) / 2)
             window_end = int((self.window_size - 1) / 2)
 
+        rel_foi_index = torch.tensor([-copy.copy(window_start)])
+
         start_index = foi_index + window_start
         end_index = foi_index + window_end
 
-        return start_index, end_index
+        return start_index, end_index, rel_foi_index
 
     def _get_pad_range(self, start_index, end_index, track_length):
         if start_index < 0:
@@ -452,12 +447,9 @@ class WindowTrackingData:
 
         # Offset center and yaw for gt_data
         offset_gt_data = copy.deepcopy(gt_data)
-        offset_gt_data[0:3] = gt_data[0:3] - offset_center
-        offset_gt_data[6:7] = gt_data[6:7] - offset_rotation
+        if gt_data[-2] == 1:
+            # Compute offset if there is a GT associated
+            offset_gt_data[0:3] = gt_data[0:3] - offset_center
+            offset_gt_data[6:7] = gt_data[6:7] - offset_rotation
 
         return offset_track_data, offset_point_data, offset_gt_data
-
-    def _get_rel_foi_index(self, index, sliding_window):
-        if sliding_window:
-            return torch.tensor([self.window_size - index % self.window_size - 1])
-        return torch.tensor([int((self.window_size - 1) / 2)])

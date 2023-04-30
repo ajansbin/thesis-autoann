@@ -51,8 +51,9 @@ class SmoothingTrainer:
         self.data_version = self.conf["data"]["version"]
         self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
-        self.sliding_window = self.conf["data"]["sliding_window"]
-        self.sw_augmentation = self.conf["data"]["sw_augmentation"]
+        self.n_slides = self.conf["data"]["n_slides"]
+        # self.sliding_window = self.conf["data"]["sliding_window"]
+        # self.sw_augmentation = self.conf["data"]["sw_augmentation"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
 
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
@@ -121,8 +122,7 @@ class SmoothingTrainer:
         self.train_data_model = WindowTrackingData(
             tracking_results=self.tracking_results,
             window_size=self.window_size,
-            sliding_window=self.sliding_window,
-            sw_augmentation=self.sw_augmentation,
+            n_slides=self.n_slides,
             use_pc=self.use_pc,
             transformations=transformations,
             points_transformations=points_transformations,
@@ -134,8 +134,7 @@ class SmoothingTrainer:
         self.val_data_model = WindowTrackingData(
             tracking_results=self.tracking_results,
             window_size=self.window_size,
-            sliding_window=self.sliding_window,
-            sw_augmentation=self.sw_augmentation,
+            n_slides=self.n_slides,
             use_pc=self.use_pc,
             transformations=transformations,
             points_transformations=points_transformations,
