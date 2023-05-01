@@ -13,14 +13,14 @@ class_names = [
     'Vehicle']#, 'VulnerableVehicle', 'Pedestrian']
 
 
-def main(data_path:str, version:str, split:str, result_path:str, type:str, config:str, save_path:str, eval_type:str, anno_path:str):
+def main(data_path:str, version:str, split:str, result_path:str, type:str, config:str, save_path:str, eval_type:str):
     conf = load_config(config)
     giou_thres = conf["data"]["association_thresholds"]['giou']
 
-    tracking_results = ZodTrackingResults(result_path, conf, version, split, anno_path, data_path)
+    tracking_results = ZodTrackingResults(result_path, conf, version, split, data_path)
 
-    gtsEval, predEval = create_eval_boxes(tracking_results, type)
-
+    gtsEval, predEval = create_eval_boxes(tracking_results, type, conf)
+    
     if eval_type == 'nuscenes':
         evaluate_nuscenes_style(gtsEval, predEval, verbose=True, output_path=save_path, verify_coordinate_system=False)
     elif eval_type == 'giou':
@@ -36,7 +36,7 @@ def main(data_path:str, version:str, split:str, result_path:str, type:str, confi
         print('Number false positives:', fp)
         print('Total number predicted boxes:', len(predEval.all))
 
-def create_eval_boxes(tracking_results, type):
+def create_eval_boxes(tracking_results, type, conf):
     gts = tracking_results.gt_boxes
     gt_frames = tracking_results.gt_frames
     preds = tracking_results.pred_boxes
@@ -46,10 +46,13 @@ def create_eval_boxes(tracking_results, type):
     for seq_id in gt_frames:
         gt_frame = gt_frames[seq_id]
         track_boxes = []
-
+        print('gt_frame', gt_frame)
         for box in tracking_results.get_pred_boxes_from_frame(gt_frame):
-            gravity_center = box["translation"][-1] + box["size"][-1]/2
-            translation = [box["translation"][0]] + [box["translation"][1]] + [gravity_center]
+            if conf['data']['remove_bottom_center']:
+                gravity_center = box["translation"][-1] + box["size"][-1]/2
+                translation = [box["translation"][0]] + [box["translation"][1]] + [gravity_center]
+            else:
+                translation = box["translation"]
             score = box['detection_score'] if type == 'detection' else box['tracking_score']
             name = box['detection_name'] if type == 'detection' else box['tracking_name']
             if name not in class_names:
@@ -59,11 +62,11 @@ def create_eval_boxes(tracking_results, type):
                 translation=tuple(translation),
                 size=tuple(box['size']),
                 rotation=tuple(box['rotation']),
-                #ego_translation = tuple(translation),
                 detection_name=name,
                 detection_score=score,
             )
             track_boxes.append(pred_box)
+            print('pred_box', pred_box)
         predEval.add_boxes(seq_id, track_boxes)
             
         gt_boxes = []
@@ -75,11 +78,11 @@ def create_eval_boxes(tracking_results, type):
                 translation=tuple(box['translation']),
                 size=tuple(box['size']),
                 rotation=tuple(box['rotation']),
-                #ego_translation = tuple(box['translation']),
                 detection_name=box['detection_name'],
                 detection_score=box['detection_score'],
             )
-            gt_boxes.append(gt_box) 
+            gt_boxes.append(gt_box)
+            print('gt_box', gt_box)
         gtsEval.add_boxes(seq_id, gt_boxes)
 
     return gtsEval, predEval
@@ -135,8 +138,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval-type', type=str, default='detection', choices=['nuscenes', 'giou', 'fp', 'all'])
     parser.add_argument('--config', type=str, default='/home/s0001668/workspace/thesis-autoann/AutoAnnSmoother/configs/training_config.yaml')
     parser.add_argument('--save-dir', type=str, default="/home/s0001668/workspace/storage/smoothing/")
-    parser.add_argument('--anno-path', type=str, default="")
     
     args = parser.parse_args()
 
-    main(args.data_path, args.version, args.split, args.result_path, args.type, args.config, args.save_dir, args.eval_type, args.anno_path)
+    main(args.data_path, args.version, args.split, args.result_path, args.type, args.config, args.save_dir, args.eval_type)

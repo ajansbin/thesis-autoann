@@ -167,6 +167,11 @@ class SmoothingTrainer:
     def _add_transformations(self, transformations_dict):
         transformations = [ToTensor()]
 
+        if transformations_dict["center_offset"]:
+            transformations.append(CenterOffset())
+        if transformations_dict["yaw_offset"]:
+            transformations.append(YawOffset())
+
         if transformations_dict["normalize"]["normalize"]:
             center_mean = transformations_dict["normalize"]["center"]["mean"]
             center_stdev = transformations_dict["normalize"]["center"]["stdev"]

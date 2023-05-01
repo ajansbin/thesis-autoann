@@ -1,54 +1,87 @@
 from smoother.io.config_utils import load_config
-from smoother.data.common.sequence_data import SequenceData
-from smoother.data.common.transformations import ToTensor, CenterOffset, YawOffset, Normalize
+from smoother.io.logging_utils import configure_loggings
+from tools.utils.training_utils import TrainingUtils
+from smoother.data.common.utils import convert_yaw_to_quat
+import copy, mmcv
+from smoother.data.common.tracking_data import (
+    WindowTrackingData,
+    TRACK_FEAT_DIM,
+    POINT_FEAT_DIM,
+)
+from smoother.data.common.transformations import (
+    ToTensor,
+    CenterOffset,
+    YawOffset,
+    Normalize,
+    PointsShift,
+    PointsScale,
+)
 from smoother.models.pc_track_net import PCTrackNet, TrackNet, PCNet
-from smoother.models.transformer import PointTransformer
-from tools.utils.inference_utils import WindowInferer, SlidingWindowInferer
-import tqdm
-import mmcv
-import os
-from collections import defaultdict
-
-
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
+import os
+import json
 
 from tools.utils.evaluation import giou3d
 
 
 class SmoothingInferer():
 
-    def __init__(self, tracking_results_path, conf_path, data_path, save_dir, seq_id):
+    def __init__(
+            self, 
+            tracking_results_path, 
+            conf_path, 
+            data_path, 
+            pc_name,
+            save_path, 
+        ):
         print("---Initializing SmoothingInferer class---")
         self.tracking_results_path = tracking_results_path
         self.conf_path = conf_path
         self.data_path = data_path
-        self.save_dir = save_dir
-        self.seq_id = seq_id
+        self.pc_name = pc_name
+        self.save_path = save_path
 
         self.conf = self._get_config(self.conf_path)
 
-        #print(self.conf["data"].keys())
-        self.data_type = self.conf["data"]["type"] # nuscenes / zod
-        self.data_version = self.conf["test"]["data"]["version"]
-        self.split = self.conf["test"]["data"]["split"]
+        # Update conf with pc path
+        # self.conf["data"]["pc_path"] = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
+        self.conf["data"]["pc_path"] = "storage/smoothing/autoannsmoothing/preprocessed_world_gravity/full_train"
+        #self.conf["data"]["pc_path"] = str(os.path.join("preprocessed", self.pc_name))
 
-        self.foi_index = self.conf["data"]["foi_index"] # index in sequence where annotation exist
+        self.data_type = self.conf["data"]["type"]  # nuscenes / zod
+        self.data_version = self.conf["data"]["version"]
+        self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
-        self.sliding_window = self.conf["data"]["sliding_window"]
+        self.n_slides = self.conf["data"]["n_slides"]
+        self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
         
+        self.use_pc = self.conf["model"]["pc"]["use_pc"]
+        self.use_track = self.conf["model"]["track"]["use_track"]
+
+        self.lr = self.conf["train"]["learning_rate"]
+        self.wd = self.conf["train"]["weight_decay"]
+        self.n_epochs = self.conf["train"]["n_epochs"]
+        self.seed = self.conf["train"]["seed"]
+        self.train_size = self.conf["train"]["train_size"]
         self.batch_size = self.conf["train"]["batch_size"]
         self.n_workers = self.conf["train"]["n_workers"]
 
+        self.center_dim = 3
+        self.size_dim = 3
+        self.rotation_dim = 1
+        self.score_dim = 1
+
+        torch.manual_seed(self.seed)
+
         self.tracking_results = None
         self.transformations = None
+        self.points_transformations = None
         self.data_model = None
         self.model = None
         self.trained_model = None
-        self.smoothing_result = []
-        self.gt = []
-        self.frame_tokens = []
+        self.result_dict = {}
 
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                         else "cpu")
@@ -59,24 +92,58 @@ class SmoothingInferer():
     def load_data(self):
         print("---Loading data---")
         # Load datatype specific results from tracking
-        if self.data_type == 'nuscenes':
+        if self.data_type == "nuscenes":
             from smoother.data.nuscenes_data import NuscTrackingResults
-            self.tracking_results = NuscTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
-        elif self.data_type == 'zod':
+
+            self.tracking_results = NuscTrackingResults(
+                self.tracking_results_path,
+                self.conf,
+                self.data_version,
+                self.split,
+                self.data_path,
+            )
+        elif self.data_type == "zod":
             from smoother.data.zod_data import ZodTrackingResults
-            self.tracking_results = ZodTrackingResults(self.tracking_results_path, self.conf, self.data_version, self.split, self.data_path)
+
+            self.tracking_results = ZodTrackingResults(
+                self.tracking_results_path,
+                self.conf,
+                self.data_version,
+                self.split,
+                self.data_path,
+            )
         else:
-            raise NotImplementedError(f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'.")
-        
-        self.transformations = self._add_transformations(self.conf["data"]["transformations"])
-        
-        self.frame_tokens = self.tracking_results.get_frames_in_sequence(self.seq_id)
-        
+            raise NotImplementedError(
+                f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'."
+            )
+
+        self.transformations, self.points_transformations = self._add_transformations(
+            self.conf["data"]["transformations"]
+        )
+
+        # Get sequences
+        seqs = self.tracking_results.seq_tokens
+
         # Load data model
-        self.data_model = SequenceData(self.tracking_results, self.seq_id, self.transformations)
+        self.data_model = WindowTrackingData(
+            tracking_results=self.tracking_results,
+            window_size=self.window_size,
+            n_slides=self.n_slides,
+            use_pc=self.use_pc,
+            transformations=self.transformations,
+            points_transformations=self.points_transformations,
+            remove_non_foi_tracks=True,
+            remove_non_gt_tracks=self.remove_non_gt_tracks,
+            seqs=seqs,
+        )
 
     def _add_transformations(self, transformations_dict):
         transformations = [ToTensor()]
+
+        if transformations_dict["center_offset"]:
+            transformations.append(CenterOffset())
+        if transformations_dict["yaw_offset"]:
+            transformations.append(YawOffset())
 
         if transformations_dict["normalize"]["normalize"]:
             center_mean = transformations_dict["normalize"]["center"]["mean"]
@@ -85,19 +152,27 @@ class SmoothingInferer():
             size_stdev = transformations_dict["normalize"]["size"]["stdev"]
             rotation_mean = transformations_dict["normalize"]["rotation"]["mean"]
             rotation_stdev = transformations_dict["normalize"]["rotation"]["stdev"]
-            #score_mean = transformations_dict["normalize"]["score"]["mean"]
-            #score_stdev = transformations_dict["normalize"]["score"]["stdev"]
 
-            means = center_mean + size_mean + rotation_mean #+ score_mean
-            stdev = center_stdev + size_stdev + rotation_stdev #+ score_stdev
-            transformations.append(Normalize(means,stdev))
+            means = center_mean + size_mean + rotation_mean
+            stdev = center_stdev + size_stdev + rotation_stdev
+            transformations.append(Normalize(means, stdev))
         if transformations_dict["center_offset"]:
             transformations.append(CenterOffset())
         if transformations_dict["yaw_offset"]:
             transformations.append(YawOffset())
 
-        return transformations
+        points_transformations = []
+        if transformations_dict["points"]["points_shift"]:
+            shift_max_size = transformations_dict["points"]["shift_max_size"]
+            points_transformations.append(PointsShift(shift_max_size))
+        if transformations_dict["points"]["points_scale"]:
+            scale_min = transformations_dict["points"]["scale_min"]
+            scale_max = transformations_dict["points"]["scale_max"]
+            points_transformations.append(PointsScale(scale_min, scale_max))
+
+        return transformations, points_transformations
     
+
     def load_model(self, model_path):
         print("---Loading model---")
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
@@ -112,14 +187,16 @@ class SmoothingInferer():
 
         model_class = self._get_model(self.use_pc, self.use_track)
 
-        self.model = model_class(track_encoder=track_encoder, 
-                                    pc_encoder=pc_encoder, 
-                                    decoder=decoder_name, 
-                                    pc_feat_dim=4, 
-                                    track_feat_dim=9, 
-                                    pc_out=pc_out_size, 
-                                    track_out=track_out_size, 
-                                    dec_out=dec_out_size)
+        self.model = model_class(
+            track_encoder=track_encoder,
+            pc_encoder=pc_encoder,
+            decoder=decoder_name,
+            pc_feat_dim=POINT_FEAT_DIM,
+            track_feat_dim=TRACK_FEAT_DIM,
+            pc_out=pc_out_size,
+            track_out=track_out_size,
+            dec_out=dec_out_size,
+        )
 
 
         self.trained_model = self.model
@@ -139,13 +216,19 @@ class SmoothingInferer():
     def infer(self):
         print("---Starting inference---")
         self.trained_model.eval()
-        #test_dataloader = DataLoader(self.data_model, batch_size=self.batch_size, shuffle=True, num_workers=self.n_workers)
-
-        #device = "cpu"
+        
+        data_loader = DataLoader(
+            self.data_model, 
+            batch_size=1, 
+            shuffle=True, 
+            num_workers=self.n_workers
+        )
+        
         self.trained_model.to(self.device)
 
-        frame_results = {}
-        frame_results['meta'] = {
+        self.result_dict = {}
+        self.result_dict['results'] = {}
+        self.result_dict['meta'] = {
             'use_camera': False,
             'use_lidar': True,
             'use_radar': False,
@@ -153,90 +236,83 @@ class SmoothingInferer():
             'use_external': False
         }
 
-
-        window_half = int((self.window_size-1)/2)
-
-        frame_results['results'] = {}
-        for foi_index in tqdm.tqdm(range(self.data_model.max_track_length)):
-            frame_token = self.frame_tokens[foi_index]
-            frame_results['results'][frame_token] = []
-
-            inferer_data = WindowInferer(self.data_model, foi_index, -window_half, window_half)
-            #inferer_data = SlidingWindowInferer(self.data_model, foi_index, self.window_size)
-
-            #infer_dataloader = DataLoader(inferer_data, batch_size=self.batch_size, shuffle=False, num_workers=self.n_workers)
-            #refined_boxes = []
-            track_ids = {}
-            for i, x in enumerate(inferer_data):
-
-                track = x.to(self.device)
-                track_object = inferer_data.get(i)
-
-                refined_track = self.trained_model.forward(track.unsqueeze(0)).squeeze()
-
-                for transformation in reversed(self.transformations):
-                    if type(transformation) == CenterOffset:
-                        #offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
-                        #transformation.set_offset(offset)
-                        foi_data = track_object.foi_index
-                        transformation.set_offset(foi_data)
-                        transformation.set_start_and_end_index(0, -1)
-                    elif type(transformation) == YawOffset:
-                        #offset = torch.tensor(track_object.offset, dtype=torch.float32).to(self.device)
-                        #transformation.set_offset(offset)
-                        foi_data = track_object.foi_index
-                        transformation.set_offset(foi_data)
-                        transformation.set_start_and_end_index(0, -1)
-                    if type(transformation) == Normalize:
-                        transformation.set_start_and_end_index(0, -1)
-
-                    refined_track = transformation.untransform(refined_track)
-
-                tracking_score = float(refined_track[-1])
-                if tracking_score <= 0:
-                    continue
+        for batch_index, (x1, x2, y) in enumerate(data_loader):
+            track, points, gt_anns = (
+                    x1.to(self.device),
+                    x2.to(self.device),
+                    y.to(self.device),
+            )
 
 
-                track_id = track_object.tracking_id
-                if track_id in track_ids:
-                    track_ids[track_id] = torch.cat((track_ids[track_id], refined_track.unsqueeze(0)), dim=0)
-                else:
-                    track_ids[track_id] = refined_track.unsqueeze(0)
-                
-            for track_id, refined_tracks in track_ids.items():
-
+            track_obj = self.data_model.get(batch_index)
+            old_foi_index = copy.copy(track_obj.foi_index)
             
-                averaged_track = torch.mean(refined_tracks, dim=0)
-                #else: 
-                #    averaged_track = refined_tracks
+            #only running inference on FOI now
+            frame_track_index = 'foi'
 
-                refined_box = {
-                    'sample_token': frame_token,
-                    'translation': averaged_track[:3].tolist(),
-                    'size': averaged_track[3:6].tolist(),
-                    'rotation': averaged_track[6:10].tolist(),
-                    'velocity': [0,0],
-                    'tracking_id': track_id,
-                    'tracking_name': 'Vehicle',
-                    'tracking_score': float(averaged_track[-1]),
-                }
+            frame_track_index = (
+                track_obj.foi_index - track_obj.starting_frame_index
+                if frame_track_index == "foi"
+                else frame_track_index
+            )
 
+            track_obj.foi_index = frame_track_index + track_obj.starting_frame_index
 
-                frame_results['results'][frame_token].append(refined_box)
+            center_out, size_out, rot_out, score_out = self.trained_model.forward(
+                track, points
+            )
 
-                #refined_boxes.append(refined_box)
+            center_out = center_out.squeeze(0)
+            size_out = size_out.squeeze(0)
+            rot_out = rot_out.squeeze(0)
+            score_out = score_out.squeeze(0)
 
-            #frame_results['results'][frame_token].append(refined_boxes)
-        
-        save_path = os.path.join(self.save_dir, 'results_smoothing.json')
-        mmcv.dump(frame_results, save_path)
+            track = track.squeeze(0)
+            mid_wind = track.shape[0] // 2 + 1
 
-             
+            c_hat = track[mid_wind, 0:3] + center_out[mid_wind]
+            s_hat = track[mid_wind, 3:6] + size_out
+            r_hat = track[mid_wind, 6].unsqueeze(-1) + rot_out[mid_wind]
 
+            score = score_out[mid_wind]
+            
+            model_out = torch.cat((c_hat, s_hat, r_hat, score), dim=-1).squeeze().detach()
+            
+            # Remove offset
+            absolute_starting_index = frame_track_index - (self.window_size // 2 + 1)
+            window_starting_box_index = max(0, absolute_starting_index)
+            center_offset = torch.tensor(
+                track_obj.boxes[window_starting_box_index].center
+            ).float().to(self.device)
+            rotation_offset = torch.tensor(
+                track_obj.boxes[window_starting_box_index].rotation
+            ).float().to(self.device)
+            model_out[0:3] = model_out[0:3] + center_offset
+            model_out[6:7] = model_out[6:7] + rotation_offset
 
+            # create refined box and add to image
+            center = model_out[0:3].cpu().numpy()
+            size = model_out[3:6].cpu().numpy()
+            rotation = convert_yaw_to_quat(model_out[6:7].cpu().numpy())
 
+            track_obj.foi_index = old_foi_index
 
+            track_id = track_obj.tracking_id
+            track_box = track_obj.boxes[window_starting_box_index]
+                    
+            refined_box = {
+                'sample_token': track_box.frame_token,
+                'translation': center.tolist(),
+                'size': size.tolist(),
+                'rotation': rotation.elements,
+                'velocity': [0,0],
+                'tracking_id': track_id,
+                'tracking_name': track_box.tracking_name,
+                'tracking_score': float(score),
+            }
 
+            if track_box.frame_token not in self.result_dict['results']:
+                self.result_dict['results'][track_box.frame_token] = []
 
-
-                
+            self.result_dict['results'][track_box.frame_token].append(refined_box)
+        mmcv.dump(self.result_dict, self.save_path)

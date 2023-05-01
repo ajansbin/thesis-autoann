@@ -22,7 +22,6 @@ def convert_to_sine_cosine(q_elem):
     assert len(q_elem) == 4
 
     q = Quaternion(q_elem)
-    print('ypr', q.yaw_pitch_roll)
     yaw = q.yaw_pitch_roll[0]
     rot_sine = np.sin(yaw)
     rot_cosine = np.cos(yaw)
