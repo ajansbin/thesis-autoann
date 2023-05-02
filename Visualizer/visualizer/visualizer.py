@@ -54,6 +54,8 @@ class VisualizeResults:
         self.line_thickness = 3
 
         self.conf = load_config(self.conf_path)
+        if "pc_path" in self.conf["data"]:
+            del self.conf["data"]["pc_path"]
 
         self.result_data = ZodTrackingResults(
             self.result_path, self.conf, self.version, self.split, self.data_path
@@ -70,8 +72,8 @@ class VisualizeResults:
         self.track_data = WindowTrackingData(
             tracking_results=self.result_data,
             window_size=self.window_size,
-            sliding_window=False,
-            sw_augmentation=False,
+            times=1,
+            random_slides=False,
             use_pc=self.use_pc,
             transformations=self.transformations,
             points_transformations=[],

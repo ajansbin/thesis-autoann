@@ -20,6 +20,7 @@ from torch import optim
 from torch.utils.data import random_split, DataLoader
 import os
 import json
+from torch.optim.lr_scheduler import OneCycleLR
 
 
 class SmoothingTrainer:
@@ -51,9 +52,8 @@ class SmoothingTrainer:
         self.data_version = self.conf["data"]["version"]
         self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
-        self.n_slides = self.conf["data"]["n_slides"]
-        # self.sliding_window = self.conf["data"]["sliding_window"]
-        # self.sw_augmentation = self.conf["data"]["sw_augmentation"]
+        self.times = self.conf["data"]["times"]
+        self.random_slides = self.conf["data"]["random_slides"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
 
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
@@ -122,7 +122,8 @@ class SmoothingTrainer:
         self.train_data_model = WindowTrackingData(
             tracking_results=self.tracking_results,
             window_size=self.window_size,
-            n_slides=self.n_slides,
+            times=self.times,
+            random_slides=self.random_slides,
             use_pc=self.use_pc,
             transformations=transformations,
             points_transformations=points_transformations,
@@ -134,7 +135,8 @@ class SmoothingTrainer:
         self.val_data_model = WindowTrackingData(
             tracking_results=self.tracking_results,
             window_size=self.window_size,
-            n_slides=self.n_slides,
+            times=self.times,
+            random_slides=self.random_slides,
             use_pc=self.use_pc,
             transformations=transformations,
             points_transformations=points_transformations,
@@ -239,7 +241,16 @@ class SmoothingTrainer:
         optimizer = optim.Adam(
             self.model.parameters(), lr=self.lr, weight_decay=self.wd
         )
-        tu = TrainingUtils(self.conf, self.log_out)
+
+        scheduler = OneCycleLR(
+            optimizer,
+            max_lr=self.lr,  # Upper learning rate boundaries in the cycle for each parameter group
+            steps_per_epoch=1,  # The number of steps per epoch to train for.
+            epochs=self.n_epochs,  # The number of epochs to train for.
+            anneal_strategy="cos",
+        )  # Specifies the annealing strategy
+
+        tu = TrainingUtils(self.conf, self.log_out, scheduler)
 
         train_dataloader = DataLoader(
             self.train_data_model,

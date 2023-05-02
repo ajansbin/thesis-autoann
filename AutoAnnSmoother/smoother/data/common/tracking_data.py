@@ -252,7 +252,8 @@ class WindowTrackingData:
         self,
         tracking_results,
         window_size,
-        n_slides,
+        times,
+        random_slides,
         use_pc=True,
         transformations=[],
         points_transformations=[],
@@ -262,7 +263,8 @@ class WindowTrackingData:
     ):
         self.tracking_results = tracking_results
         self.window_size = window_size
-        self.n_slides = n_slides
+        self.times = times
+        self.random_slides = random_slides
         self.use_pc = use_pc
         self.transformations = transformations
         self.points_transformations = points_transformations
@@ -280,15 +282,13 @@ class WindowTrackingData:
             seqs,
         )
 
-        print(
-            f"Finished loading {len(self.tracking_data) * self.n_slides} data samples!"
-        )
+        print(f"Finished loading {len(self.tracking_data) * self.times} data samples!")
 
     def __len__(self):
-        return len(self.tracking_data) * self.n_slides
+        return len(self.tracking_data) * self.times
 
     def __getitem__(self, index):
-        track_index = index // self.n_slides
+        track_index = index // self.times
         track_data, point_data, gt_data = self.tracking_data[track_index]
         """
         track_data      (180,7)         [x,y,z,l,w,h,r]
@@ -297,7 +297,7 @@ class WindowTrackingData:
         """
 
         start_index, end_index, rel_foi_index = self._get_absolute_window_range(
-            index, track_index, self.n_slides
+            index, track_index, self.random_slides
         )
 
         start_index, end_index, pad_start, pad_end = self._get_pad_range(
@@ -327,19 +327,16 @@ class WindowTrackingData:
         return offset_track_data, offset_point_data, offset_gt_data
 
     def get(self, index) -> Tracklet:
-        track_index = index // self.n_slides
+        track_index = index // self.times
         return self.tracking_data.get(track_index)
 
-    def _get_absolute_window_range(self, index, track_index, n_slides):
+    def _get_absolute_window_range(self, index, track_index, random_slides):
         foi_index = self.tracking_data.get_foi_index(track_index)
 
-        if n_slides > 1:
+        if random_slides:
             # Randomly take a window surrounding foi
             window_start = random.randint(-self.window_size + 1, 0)
             window_end = window_start + self.window_size - 1
-            # Slide the window starting from foi as last frame
-            # window_start = index % self.slides - self.slides + 1
-            # window_end = window_start + self.window_size - 1
         else:
             # Always set foi as middle-frame in window
             window_start = int(-(self.window_size - 1) / 2)

@@ -7,9 +7,10 @@ import tqdm
 
 
 class TrainingUtils:
-    def __init__(self, conf, log_out: str):
+    def __init__(self, conf, log_out: str, scheduler):
         self.conf = conf
         self.log_out = log_out
+        self.scheduler = scheduler
         self.center_dim = 3
         self.size_dim = 3
         self.rotation_dim = 1
@@ -50,6 +51,7 @@ class TrainingUtils:
 
             losses = {"train_loss": log_train_loss, "val_loss": log_val_loss}
             log_epoch_stats(losses, metrics, epoch, mode="TRAIN", log_out=self.log_out)
+            self.scheduler.step()
         return model, train_losses, val_losses
 
     def _train_epoch(self, model, optimizer, train_loader, epoch):

@@ -21,12 +21,11 @@ data:
     world_coord: true
     motion_compensate: true
   window_size: 25
-  n_slides: 25
-  #sliding_window: true
-  #sw_augmentation: false # this can not be true used if sliding_window=True
+  times: 25
+  random_slides: true
   association_metric: giou #[giou, l2]
   association_thresholds:
-    giou: 0.0
+    giou: 0.3
     l2: 2
   remove_bottom_center: false # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: false
