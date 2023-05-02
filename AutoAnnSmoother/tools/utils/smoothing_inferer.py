@@ -2,7 +2,7 @@ from smoother.io.config_utils import load_config
 from smoother.io.logging_utils import configure_loggings
 from tools.utils.training_utils import TrainingUtils
 from smoother.data.common.utils import convert_yaw_to_quat
-import copy, mmcv
+import copy, mmcv, tqdm
 from smoother.data.common.tracking_data import (
     WindowTrackingData,
     TRACK_FEAT_DIM,
@@ -204,7 +204,6 @@ class SmoothingInferer():
             dec_out=dec_out_size,
         )
 
-
         self.trained_model = self.model
         checkpoint = torch.load(model_path)
         self.trained_model.load_state_dict(checkpoint)
@@ -223,13 +222,6 @@ class SmoothingInferer():
         print("---Starting inference---")
         self.trained_model.eval()
         
-        data_loader = DataLoader(
-            self.track_data, 
-            batch_size=1, 
-            shuffle=True, 
-            num_workers=self.n_workers
-        )
-        
         self.trained_model.to(self.device)
 
         self.result_dict = {}
@@ -242,15 +234,7 @@ class SmoothingInferer():
             'use_external': False
         }
 
-        '''
-        for batch_index, (x1, x2, y) in enumerate(data_loader):
-            track, points, gt_anns = (
-                    x1.to(self.device),
-                    x2.to(self.device),
-                    y.to(self.device),
-            )
-        '''
-        for scene_index, seq_id in enumerate(self.zod.get_split(self.split)):
+        for scene_index, seq_id in tqdm.tqdm(enumerate(self.zod.get_split(self.split))):
             seq = self.zod[seq_id]
             lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
         
@@ -298,65 +282,6 @@ class SmoothingInferer():
                     }
 
                     self.result_dict['results'][track_box.frame_token].append(refined_box)
-            '''
-            track_obj = self.data_model.get(track_index)
-            old_foi_index = copy.copy(track_obj.foi_index)
-            
-            #only running inference on FOI now
-            frame_track_index = 'foi'
-
-            frame_track_index = (
-                track_obj.foi_index - track_obj.starting_frame_index
-                if frame_track_index == "foi"
-                else frame_track_index
-            )
-
-            track_obj.foi_index = frame_track_index + track_obj.starting_frame_index
-
-            center_out, size_out, rot_out, score_out = self.trained_model.forward(
-                track, points
-            )
-
-            center_out = center_out.squeeze(0)
-            size_out = size_out.squeeze(0)
-            rot_out = rot_out.squeeze(0)
-            score_out = score_out.squeeze(0)
-
-            track = track.squeeze(0)
-            mid_wind = track.shape[0] // 2 + 1
-
-            c_hat = track[mid_wind, 0:3] + center_out[mid_wind]
-            s_hat = track[mid_wind, 3:6] + size_out
-            r_hat = track[mid_wind, 6].unsqueeze(-1) + rot_out[mid_wind]
-
-            score = score_out[mid_wind]
-            
-            model_out = torch.cat((c_hat, s_hat, r_hat, score), dim=-1).squeeze().detach()
-            
-            # Remove offset
-            absolute_starting_index = frame_track_index - (self.window_size // 2 + 1)
-            print('absolute_starting_index', absolute_starting_index)
-            window_starting_box_index = max(0, absolute_starting_index)
-            center_offset = torch.tensor(
-                track_obj.boxes[window_starting_box_index].center
-            ).float().to(self.device)
-            rotation_offset = torch.tensor(
-                track_obj.boxes[window_starting_box_index].rotation
-            ).float().to(self.device)
-            model_out[0:3] = model_out[0:3] + center_offset
-            model_out[6:7] = model_out[6:7] + rotation_offset
-
-            # create refined box and add to image
-            center = model_out[0:3].cpu().numpy()
-            size = model_out[3:6].cpu().numpy()
-            rotation = convert_yaw_to_quat(model_out[6:7].cpu().numpy())
-
-            track_id = track_obj.tracking_id
-            track_box = track_obj.boxes[frame_track_index]
-                 
-            track_obj.foi_index = old_foi_index
-            '''
-        print(self.result_dict)
         mmcv.dump(self.result_dict, self.save_path)
 
     def _get_tracks_in_seq(self, seq_id):

@@ -6,6 +6,8 @@ from smoother.io.config_utils import load_config
 from tools.utils.evaluation import giou3d
 import numpy as np
 from zod.eval.detection.eval_nuscenes_style import evaluate_nuscenes_style
+from zod.data_classes.box import Box3D
+from zod.constants import Lidar, EGO
 
 import json
 
@@ -45,8 +47,8 @@ def create_eval_boxes(tracking_results, type, conf):
 
     for seq_id in gt_frames:
         gt_frame = gt_frames[seq_id]
+        seq = tracking_results.zod[seq_id]
         track_boxes = []
-        print('gt_frame', gt_frame)
         for box in tracking_results.get_pred_boxes_from_frame(gt_frame):
             if conf['data']['remove_bottom_center']:
                 gravity_center = box["translation"][-1] + box["size"][-1]/2
@@ -57,34 +59,42 @@ def create_eval_boxes(tracking_results, type, conf):
             name = box['detection_name'] if type == 'detection' else box['tracking_name']
             if name not in class_names:
                 continue
+            
+            box3d = Box3D(translation,box['size'], box['rotation'], Lidar.VELODYNE)
+            box3d.convert_to(EGO, seq.calibration)
+
+
             pred_box = DetectionBox(
                 sample_token=seq_id,
-                translation=tuple(translation),
-                size=tuple(box['size']),
-                rotation=tuple(box['rotation']),
+                translation=tuple(box3d.center),
+                size=tuple(box3d.size),
+                rotation=tuple(box3d.orientation.elements),
                 detection_name=name,
                 detection_score=score,
             )
             track_boxes.append(pred_box)
-            print('pred_box', pred_box)
         predEval.add_boxes(seq_id, track_boxes)
             
         gt_boxes = []
         for box in gts[seq_id]:
             if box['detection_name'] not in class_names:
                 continue
+            if conf['data']['annotations']['world_coord']:
+                print('Change config for annotations to not be in world')
+            
+            box3d = Box3D(box['translation'],box['size'], box['rotation'], Lidar.VELODYNE)
+            box3d.convert_to(EGO, seq.calibration)
+
             gt_box = DetectionBox(
                 sample_token=seq_id,
-                translation=tuple(box['translation']),
-                size=tuple(box['size']),
-                rotation=tuple(box['rotation']),
+                translation=tuple(box3d.center),
+                size=tuple(box3d.size),
+                rotation=tuple(box3d.orientation.elements),
                 detection_name=box['detection_name'],
                 detection_score=box['detection_score'],
             )
             gt_boxes.append(gt_box)
-            print('gt_box', gt_box)
         gtsEval.add_boxes(seq_id, gt_boxes)
-
     return gtsEval, predEval
 
 def calculate_giou3d_matrix(gts, pred):
@@ -125,6 +135,7 @@ def calculate_gious_fp(gtsEval, predEval, giou_thres):
 def mean_giou(gts, preds, giou_thres):
     gious, _ = calculate_gious_fp(gts, preds, giou_thres)
     return sum(gious)/len(gious)
+
 
 if __name__ == '__main__':
     import argparse
