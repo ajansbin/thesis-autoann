@@ -24,7 +24,10 @@ import os
 import json
 
 from tools.utils.evaluation import giou3d
-
+from zod import ZodSequences
+from zod.constants import Lidar, EGO
+from zod.data_classes.box import Box3D
+from zod.data_classes.geometry import Pose
 
 class SmoothingInferer():
 
@@ -57,6 +60,8 @@ class SmoothingInferer():
         self.n_slides = self.conf["data"]["n_slides"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
         
+        self.zod = ZodSequences(self.data_path, self.data_version)
+
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
         self.use_track = self.conf["model"]["track"]["use_track"]
 
@@ -78,7 +83,7 @@ class SmoothingInferer():
         self.tracking_results = None
         self.transformations = None
         self.points_transformations = None
-        self.data_model = None
+        self.track_data = None
         self.model = None
         self.trained_model = None
         self.result_dict = {}
@@ -111,6 +116,7 @@ class SmoothingInferer():
                 self.data_version,
                 self.split,
                 self.data_path,
+                self.zod,
             )
         else:
             raise NotImplementedError(
@@ -125,7 +131,7 @@ class SmoothingInferer():
         seqs = self.tracking_results.seq_tokens
 
         # Load data model
-        self.data_model = WindowTrackingData(
+        self.track_data = WindowTrackingData(
             tracking_results=self.tracking_results,
             window_size=self.window_size,
             n_slides=self.n_slides,
@@ -218,7 +224,7 @@ class SmoothingInferer():
         self.trained_model.eval()
         
         data_loader = DataLoader(
-            self.data_model, 
+            self.track_data, 
             batch_size=1, 
             shuffle=True, 
             num_workers=self.n_workers
@@ -236,15 +242,64 @@ class SmoothingInferer():
             'use_external': False
         }
 
+        '''
         for batch_index, (x1, x2, y) in enumerate(data_loader):
             track, points, gt_anns = (
                     x1.to(self.device),
                     x2.to(self.device),
                     y.to(self.device),
             )
+        '''
+        for scene_index, seq_id in enumerate(self.zod.get_split(self.split)):
+            seq = self.zod[seq_id]
+            lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
+        
+            tracks_same_seq = self._get_tracks_in_seq(seq_id)
+            
+            for lidar_index, lidar_frame in enumerate(lidar_frames[:-1]):
+                lidar_path = lidar_frame.to_dict()['filepath']
+                frame_token = os.path.basename(lidar_path)
+                
+                if frame_token not in self.result_dict['results']:
+                    self.result_dict['results'][frame_token] = []
 
+                for track_index, track_same_seq in tracks_same_seq:
+                    if (
+                        lidar_index < track_same_seq.starting_frame_index
+                        or lidar_index
+                        >= track_same_seq.starting_frame_index + len(track_same_seq.boxes)
+                    ):
+                        continue
 
-            track_obj = self.data_model.get(batch_index)
+                    frame_track_index = lidar_index - track_same_seq.starting_frame_index
+                    track_box = track_same_seq.boxes[frame_track_index]
+
+                    assert frame_token == track_box.frame_token
+
+                    ref_box, score = self._get_refined_box(
+                        self.trained_model,
+                        self.track_data,
+                        track_index,
+                        frame_track_index,
+                        lidar_frame,
+                        seq,
+                        0.0,
+                    )
+                    
+                    refined_box = {
+                        'sample_token': track_box.frame_token,
+                        'translation': ref_box.center.tolist(),
+                        'size': ref_box.size.tolist(),
+                        'rotation': ref_box.orientation.elements.tolist(),
+                        'velocity': [0,0],
+                        'tracking_id': track_box.tracking_id,
+                        'tracking_name': track_box.tracking_name,
+                        'tracking_score': float(score),
+                    }
+
+                    self.result_dict['results'][track_box.frame_token].append(refined_box)
+            '''
+            track_obj = self.data_model.get(track_index)
             old_foi_index = copy.copy(track_obj.foi_index)
             
             #only running inference on FOI now
@@ -280,6 +335,7 @@ class SmoothingInferer():
             
             # Remove offset
             absolute_starting_index = frame_track_index - (self.window_size // 2 + 1)
+            print('absolute_starting_index', absolute_starting_index)
             window_starting_box_index = max(0, absolute_starting_index)
             center_offset = torch.tensor(
                 track_obj.boxes[window_starting_box_index].center
@@ -295,24 +351,97 @@ class SmoothingInferer():
             size = model_out[3:6].cpu().numpy()
             rotation = convert_yaw_to_quat(model_out[6:7].cpu().numpy())
 
-            track_obj.foi_index = old_foi_index
-
             track_id = track_obj.tracking_id
-            track_box = track_obj.boxes[window_starting_box_index]
-                    
-            refined_box = {
-                'sample_token': track_box.frame_token,
-                'translation': center.tolist(),
-                'size': size.tolist(),
-                'rotation': rotation.elements,
-                'velocity': [0,0],
-                'tracking_id': track_id,
-                'tracking_name': track_box.tracking_name,
-                'tracking_score': float(score),
-            }
-
-            if track_box.frame_token not in self.result_dict['results']:
-                self.result_dict['results'][track_box.frame_token] = []
-
-            self.result_dict['results'][track_box.frame_token].append(refined_box)
+            track_box = track_obj.boxes[frame_track_index]
+                 
+            track_obj.foi_index = old_foi_index
+            '''
+        print(self.result_dict)
         mmcv.dump(self.result_dict, self.save_path)
+
+    def _get_tracks_in_seq(self, seq_id):
+        tracks_same_seq = []
+        for i in range(len(self.track_data)):
+            t = self.track_data.get(i)
+            if t.sequence_id == seq_id:
+                tracks_same_seq.append((i, t))
+        return tracks_same_seq
+    
+    def _get_refined_box(
+        self,
+        model,
+        track_data,
+        track_index,
+        frame_track_index,
+        lidar_frame,
+        seq,
+        score_thresh,
+    ):
+        track_obj = track_data.get(track_index)
+        old_foi_index = copy.copy(track_obj.foi_index)
+
+        frame_track_index = (
+            track.foi_index - track.starting_frame_index
+            if frame_track_index == "foi"
+            else frame_track_index
+        )
+
+        track_obj.foi_index = frame_track_index + track_obj.starting_frame_index
+        track, point, gt = track_data[track_index]
+        track = track.to(self.device)
+        point = point.to(self.device)
+        center_out, size_out, rot_out, score_out = model.forward(
+            track.unsqueeze(0), point.unsqueeze(0)
+        )
+
+        center_out = center_out.squeeze(0)
+        size_out = size_out.squeeze(0)
+        rot_out = rot_out.squeeze(0)
+        score_out = score_out.squeeze(0)
+
+        mid_wind = track.shape[0] // 2 + 1
+        c_hat = track[mid_wind, 0:3] + center_out[mid_wind]
+        s_hat = track[mid_wind, 3:6] + size_out
+        r_hat = track[mid_wind, 6].unsqueeze(-1) + rot_out[mid_wind]
+
+        score = score_out[mid_wind]
+
+        if score < score_thresh:
+            return (None, score)
+
+        model_out = torch.cat((c_hat, s_hat, r_hat, score), dim=-1).squeeze().detach()
+
+        # Remove offset
+        absolute_starting_index = frame_track_index - (self.window_size // 2 + 1)
+        window_starting_box_index = max(0, absolute_starting_index)
+        center_offset = torch.tensor(
+            track_obj.boxes[window_starting_box_index].center
+        ).float().to(self.device)
+        rotation_offset = torch.tensor(
+            track_obj.boxes[window_starting_box_index].rotation
+        ).float().to(self.device)
+        model_out[0:3] = model_out[0:3] + center_offset
+        model_out[6:7] = model_out[6:7] + rotation_offset
+
+        # create refined box and add to image
+        center = model_out[0:3].cpu().numpy()
+        size = model_out[3:6].cpu().numpy()
+        rotation = convert_yaw_to_quat(model_out[6:7].cpu().numpy())
+        ref_box = self._get_box(
+            center, size, rotation, lidar=False, lidar_frame=lidar_frame, seq=seq
+        )
+
+        track_obj.foi_index = old_foi_index
+
+        return (ref_box, score)
+    
+    def _get_box(self, center, size, rotation, lidar=False, lidar_frame=None, seq=None):
+        if lidar:
+            return Box3D(center, size, rotation, Lidar.VELODYNE)
+        box = Box3D(center, size, rotation, EGO)
+        core_timestamp = lidar_frame.time.timestamp()
+        core_ego_pose = Pose(seq.ego_motion.get_poses(core_timestamp))
+        box._transform_inv(core_ego_pose, EGO)
+        box.convert_to(Lidar.VELODYNE, seq.calibration)
+
+        return box
