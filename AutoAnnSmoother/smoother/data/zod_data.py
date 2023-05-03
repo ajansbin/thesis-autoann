@@ -7,11 +7,10 @@ from smoother.data.loading.zod_loader import load_gt
 from zod.data_classes.geometry import Pose
 
 OBJECT_CLASSES_DYNAMIC = [
-    "Vehicle",
-    "VulnerableVehicle",
-    "Pedestrian",
-    "Animal",
-]
+    "Vehicle"]
+
+    #"VulnerableVehicle",
+    #"Pedestrian",
 OBJECT_CLASSES_STATIC = [
     "PoleObject",
     "TrafficBeacon",
@@ -21,9 +20,7 @@ OBJECT_CLASSES_STATIC = [
     "DynamicBarrier",
 ]
 OBJECT_CLASSES = [
-    *OBJECT_CLASSES_DYNAMIC,
-    *OBJECT_CLASSES_STATIC,
-    "Inconclusive",
+    *OBJECT_CLASSES_DYNAMIC
 ]
 
 

@@ -57,7 +57,8 @@ class SmoothingInferer():
         self.data_version = self.conf["data"]["version"]
         self.split = self.conf["data"]["split"]
         self.window_size = self.conf["data"]["window_size"]
-        self.n_slides = self.conf["data"]["n_slides"]
+        self.times = self.conf['data']['times']
+        self.random_slides = self.conf['data']['random_slides']
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
         
         self.zod = ZodSequences(self.data_path, self.data_version)
@@ -134,7 +135,8 @@ class SmoothingInferer():
         self.track_data = WindowTrackingData(
             tracking_results=self.tracking_results,
             window_size=self.window_size,
-            n_slides=self.n_slides,
+            times=self.times,
+            random_slides=self.random_slides,
             use_pc=self.use_pc,
             transformations=self.transformations,
             points_transformations=self.points_transformations,
@@ -237,10 +239,14 @@ class SmoothingInferer():
         for scene_index, seq_id in tqdm.tqdm(enumerate(self.zod.get_split(self.split))):
             seq = self.zod[seq_id]
             lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
-        
             tracks_same_seq = self._get_tracks_in_seq(seq_id)
             
             for lidar_index, lidar_frame in enumerate(lidar_frames[:-1]):
+                #ONLY INFER ON KEY LIDAR
+                key_lidar_frame = seq.info.get_key_lidar_frame(lidar=Lidar.VELODYNE)
+                if lidar_frame != key_lidar_frame:
+                    continue
+
                 lidar_path = lidar_frame.to_dict()['filepath']
                 frame_token = os.path.basename(lidar_path)
                 
