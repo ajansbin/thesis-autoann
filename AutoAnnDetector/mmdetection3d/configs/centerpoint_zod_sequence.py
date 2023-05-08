@@ -1,6 +1,6 @@
 point_cloud_range = [-51.2, 0, -5.0, 51.2, 204.8, 3.0]
 class_names = ["Vehicle", "VulnerableVehicle", "Pedestrian"]
-dataset_type = "ZodFramesDataset"
+dataset_type = "ZodSequenceDataset"
 data_root = "data/zod/"
 input_modality = dict(
     use_lidar=True, use_camera=True, use_radar=False, use_map=False, use_external=False
@@ -65,7 +65,7 @@ data = dict(
         dataset=dict(
             type=dataset_type,
             data_root=data_root,
-            ann_file=data_root + "/mmdet3d/zod_infos_train.pkl",
+            ann_file="storage/detection/CenterPoint/zod_seq_full/zod-seq-full_infos_train.pkl",
             pipeline=[
                 dict(
                     type="ZodLoadPointsFromFile",
@@ -91,7 +91,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + "/mmdet3d/zod_infos_val.pkl",
+        ann_file="storage/detection/CenterPointzod_seq_full/zod-seq-full_infos_val.pkl",
         pipeline=[
             dict(
                 type="ZodLoadPointsFromFile",
@@ -124,7 +124,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + "/mmdet3d/zod_infos_val.pkl",
+        ann_file="storage/detection/CenterPoint/zod_seq_full/zod-seq-full_infos_val.pkl",
         pipeline=[
             dict(
                 type="ZodLoadPointsFromFile",
@@ -156,7 +156,7 @@ data = dict(
     ),
 )
 evaluation = dict(
-    interval=5,
+    interval=1,
     pipeline=[
         dict(
             type="ZodLoadPointsFromFile",
@@ -285,7 +285,7 @@ log_config = dict(
         dict(
             type="MMDet3DWandbHook",
             init_kwargs=dict(
-                project="centerpoint_od", name="zod_full_multiclass_pcr200"
+                project="centerpoint_od", name="zod_seq_full_val_multiclass_pcr200"
             ),
             log_checkpoint=False,
             log_checkpoint_metadata=False,
@@ -299,7 +299,7 @@ log_config = dict(
 )
 dist_params = dict(backend="nccl")
 log_level = "INFO"
-work_dir = "./work_dirs/centerpoint_zod_multi/"
+work_dir = "./work_dirs/centerpoint_zod"
 load_from = None
 resume_from = None
 workflow = [("train", 1)]
