@@ -25,9 +25,9 @@ data:
   random_slides: true
   association_metric: giou #[giou, l2]
   association_thresholds:
-    giou: 0.3
+    giou: 0.0
     l2: 2
-  remove_bottom_center: false # if increases the z dimension by half the height for the detections
+  remove_bottom_center: true # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: false
   pc_offset: true
   transformations:

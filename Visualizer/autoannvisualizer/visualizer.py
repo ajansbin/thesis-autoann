@@ -23,7 +23,12 @@ from zod.data_classes.box import Box3D
 from zod.data_classes.sensor import LidarData
 from zod.visualization.lidar_on_image import visualize_lidar_on_image
 from zod.visualization.object_visualization import overlay_object_3d_box_on_image
-from smoother.models.pc_track_net import PCTrackNet, PCNet, TrackNet
+from smoother.models.pc_track_net import (
+    PCTrackNet,
+    PCNet,
+    TrackNet,
+    PCTrackEarlyFusionNet,
+)
 import torch
 from PIL import Image
 import os
@@ -70,6 +75,7 @@ class VisualizeResults:
         end_ind = int((self.window_size - 1) / 2)
 
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
+        self.early_fuse = self.conf["model"]["early_fuse"]
 
         self.track_data = WindowTrackingData(
             tracking_results=self.result_data,
@@ -518,7 +524,7 @@ class VisualizeResults:
         decoder_name = conf["model"]["decoder"]["name"]
         dec_out_size = conf["model"]["decoder"]["dec_out_size"]
 
-        model_cls = self._get_model_cls(self.use_pc, self.use_track)
+        model_cls = self._get_model_cls(self.early_fuse, self.use_pc, self.use_track)
 
         model = model_cls(
             track_encoder=track_encoder,
@@ -536,7 +542,9 @@ class VisualizeResults:
         model.eval()
         return model
 
-    def _get_model_cls(self, use_pc, use_track):
+    def _get_model_cls(self, early_fuse, use_pc, use_track):
+        if early_fuse:
+            return PCTrackEarlyFusionNet
         if use_pc and use_track:
             return PCTrackNet
         if use_pc:

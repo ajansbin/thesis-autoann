@@ -7,7 +7,7 @@ Please stand inside AutoAnnDetector for running the detection-code. <br>
 ## Setup
 
 ``` bash
-cd AutoAnnDetector
+cd AutoAnnDetector/mmdetection3d
 ```
 
 Before training a model it can be good to install packages using the containing docker file. Please run: <br>

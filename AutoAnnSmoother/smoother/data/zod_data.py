@@ -5,6 +5,7 @@ from zod.constants import Lidar
 from smoother.data.loading.loader import load_prediction
 from smoother.data.loading.zod_loader import load_gt
 from zod.data_classes.geometry import Pose
+import copy
 
 OBJECT_CLASSES_DYNAMIC = [
     "Vehicle"]
@@ -98,7 +99,7 @@ class ZodTrackingResults(TrackingResultsBase):
         return frame_tokens
 
     def get_pred_boxes_from_frame(self, frame_token):
-        pred_boxes = self.pred_boxes[frame_token]
+        pred_boxes = copy.deepcopy(self.pred_boxes[frame_token])
         return pred_boxes[0] if len(pred_boxes) > 0 else pred_boxes
 
     def get_gt_boxes_from_frame(self, frame_token):

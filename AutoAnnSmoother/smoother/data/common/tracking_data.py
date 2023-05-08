@@ -218,6 +218,11 @@ class TrackingData:
                             self.assoc_thres,
                         )
                     track_ids[tracking_id].add_box(tracking_box)
+                    # if tracking_id == "Vehicle_0_13":
+                    #    print(
+                    #        tracking_id,
+                    #        [box.center for box in track_ids[tracking_id].boxes],
+                    #    )
 
             # remove tracking_id which do not include FoI
             if self.remove_non_foi_tracks:
@@ -426,27 +431,97 @@ class WindowTrackingData:
 
         offset_center = wind_track_data[first_index, 0:3]
         offset_rotation = wind_track_data[first_index, 6:7]
+        rotation_matrix = self._get_rotation_matrix(offset_rotation)
 
-        # Offset center and yaw for track data
+        # Offset center and rotation for tracks
         offset_track_data = copy.deepcopy(wind_track_data)
-        offset_track_data[first_index : last_index + 1, 0:3] = (
-            wind_track_data[first_index : last_index + 1, 0:3] - offset_center
-        )
+
+        # print("track_centers", track_centers.shape)
+
+        offset_track_data[first_index : last_index + 1, 0:3] = self.transform(
+            offset_track_data[first_index : last_index + 1, 0:3].unsqueeze(1),
+            offset_center,
+            rotation_matrix,
+        ).squeeze(1)
         offset_track_data[first_index : last_index + 1, 6:7] = (
             wind_track_data[first_index : last_index + 1, 6:7] - offset_rotation
         )
 
         # Offset all points using center
         offset_point_data = copy.deepcopy(wind_point_data)
-        offset_point_data[first_index : last_index + 1, :, 0:3] = (
-            wind_point_data[first_index : last_index + 1, :, 0:3] - offset_center
+        offset_point_data[first_index : last_index + 1, :, 0:3] = self.transform(
+            wind_point_data[first_index : last_index + 1, :, 0:3],
+            offset_center,
+            rotation_matrix,
         )
 
         # Offset center and yaw for gt_data
         offset_gt_data = copy.deepcopy(gt_data)
         if gt_data[-2] == 1:
             # Compute offset if there is a GT associated
-            offset_gt_data[0:3] = gt_data[0:3] - offset_center
+            offset_gt_data[0:3] = (
+                self.transform(
+                    gt_data[0:3].unsqueeze(0).unsqueeze(0),
+                    offset_center,
+                    rotation_matrix,
+                )
+                .squeeze(0)
+                .squeeze(0)
+            )
             offset_gt_data[6:7] = gt_data[6:7] - offset_rotation
 
+        # Offset temporal encoding for window
+        offset_track_data[first_index : last_index + 1, -1] = (
+            offset_track_data[first_index : last_index + 1, -1] - first_index
+        )
+        offset_track_data[:first_index, -1] = 0
+        offset_track_data[last_index + 1 :, -1] = 0
+
+        offset_point_data[first_index : last_index + 1, :, -1] = (
+            offset_point_data[first_index : last_index + 1, :, -1] - first_index
+        )
+        offset_point_data[:first_index, :, -1] = 0
+        offset_point_data[last_index + 1 :, :, -1] = 0
+
         return offset_track_data, offset_point_data, offset_gt_data
+
+    def _get_rotation_matrix(self, yaw):
+        c, s = torch.cos(yaw), torch.sin(yaw)
+        return torch.tensor([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+
+    def transform(self, points, center, rotation_matrix):
+        """
+        points (W,N,3)
+        center (3)
+        rotation_matrix (3,3)
+        """
+
+        print(points.shape)
+        if points.shape[1] == 1:
+            print("points")
+            print(points)
+
+        rot_mat_transpose = rotation_matrix.T
+        inverse_translate = -rot_mat_transpose @ center.unsqueeze(-1)
+        trans = torch.cat((rot_mat_transpose, inverse_translate), dim=1)
+        trans = torch.cat(
+            (trans, torch.tensor([[0, 0, 0, 1]], dtype=torch.float32)), dim=0
+        )
+
+        points_homogeneous = torch.cat(
+            (
+                points.permute(0, 2, 1),
+                torch.ones((points.shape[0], 1, points.shape[1]), dtype=torch.float32),
+            ),
+            dim=1,
+        )
+        local_points = trans @ points_homogeneous
+
+        # Remove the homogeneous coordinate
+        local_points = local_points.permute(0, 2, 1)[:, :, :3]
+
+        if points.shape[1] == 1:
+            print("local_points")
+            print(local_points)
+
+        return local_points

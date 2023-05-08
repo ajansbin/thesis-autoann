@@ -14,13 +14,18 @@ from smoother.data.common.transformations import (
     PointsShift,
     PointsScale,
 )
-from smoother.models.pc_track_net import PCTrackNet, TrackNet, PCNet
+from smoother.models.pc_track_net import (
+    PCTrackNet,
+    TrackNet,
+    PCNet,
+    PCTrackEarlyFusionNet,
+)
 import torch
 from torch import optim
 from torch.utils.data import random_split, DataLoader
 import os
 import json
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import ExponentialLR
 
 
 class SmoothingTrainer:
@@ -56,6 +61,7 @@ class SmoothingTrainer:
         self.random_slides = self.conf["data"]["random_slides"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
 
+        self.early_fuse = self.conf["model"]["early_fuse"]
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
         self.use_track = self.conf["model"]["track"]["use_track"]
 
@@ -213,7 +219,7 @@ class SmoothingTrainer:
         decoder_name = self.conf["model"]["decoder"]["name"]
         dec_out_size = self.conf["model"]["decoder"]["dec_out_size"]
 
-        model_class = self._get_model(self.use_pc, self.use_track)
+        model_class = self._get_model(self.early_fuse, self.use_pc, self.use_track)
 
         self.model = model_class(
             track_encoder=track_encoder,
@@ -226,7 +232,9 @@ class SmoothingTrainer:
             dec_out=dec_out_size,
         )
 
-    def _get_model(self, use_pc, use_track):
+    def _get_model(self, early_fuse, use_pc, use_track):
+        if early_fuse:
+            return PCTrackEarlyFusionNet
         if use_pc and use_track:
             return PCTrackNet
         if use_pc:
@@ -242,13 +250,7 @@ class SmoothingTrainer:
             self.model.parameters(), lr=self.lr, weight_decay=self.wd
         )
 
-        scheduler = OneCycleLR(
-            optimizer,
-            max_lr=self.lr,  # Upper learning rate boundaries in the cycle for each parameter group
-            steps_per_epoch=1,  # The number of steps per epoch to train for.
-            epochs=self.n_epochs,  # The number of epochs to train for.
-            anneal_strategy="cos",
-        )  # Specifies the annealing strategy
+        scheduler = ExponentialLR(optimizer, gamma=0.98, verbose=True)
 
         tu = TrainingUtils(self.conf, self.log_out, scheduler)
 
