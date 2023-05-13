@@ -8,17 +8,21 @@ from zod.data_classes.box import Box3D
 from zod.constants import Lidar, EGO, AnnotationProject, Anonymization
 from zod.data_classes.geometry import Pose
 
-VALID_OBJECTS = ["Vehicle"]
+VALID_OBJECTS = ["Vehicle", "VulnerableVehicle", "Pedestrian"]
+
 
 def load_gt(zod, scene_tokens, motion_compensate=True, world_coord=True, verbose=False):
     seq_gt = {}
 
-    for seq_id in tqdm.tqdm(scene_tokens, position=0, leave=True):        
+    for seq_id in tqdm.tqdm(scene_tokens, position=0, leave=True):
         seq = zod[seq_id]
         annotations = seq.get_annotation(AnnotationProject.OBJECT_DETECTION)
         frame_anns = []
         for ann_obj in annotations:
-            if ann_obj.should_ignore_object(require_3d=True) or ann_obj.name not in VALID_OBJECTS:
+            if (
+                ann_obj.should_ignore_object(require_3d=True)
+                or ann_obj.name not in VALID_OBJECTS
+            ):
                 continue
 
             translation = ann_obj.box3d.center
@@ -31,7 +35,7 @@ def load_gt(zod, scene_tokens, motion_compensate=True, world_coord=True, verbose
                 cam_frame = seq.info.get_key_camera_frame(Anonymization.BLUR)
                 cam_timestamp = cam_frame.time.timestamp()
                 pose_camera = Pose(seq.ego_motion.get_poses(cam_timestamp))
-                
+
                 lid_frame = seq.info.get_key_lidar_frame()
                 lid_timestamp = lid_frame.time.timestamp()
                 pose_lidar = Pose(seq.ego_motion.get_poses(lid_timestamp))
@@ -51,15 +55,15 @@ def load_gt(zod, scene_tokens, motion_compensate=True, world_coord=True, verbose
                 "translation": list(box.center),
                 "size": list(box.size),
                 "rotation": list(box.orientation.elements),
-                "velocity": [0.0,0.0],
-                "detection_name":ann_obj.name,
-                "detection_score":-1.0,  # GT samples do not have a score.
-                "attribute_name":ann_obj.object_type,
+                "velocity": [0.0, 0.0],
+                "detection_name": ann_obj.name,
+                "detection_score": -1.0,  # GT samples do not have a score.
+                "attribute_name": ann_obj.object_type,
                 "instance_token": ann_obj.uuid,
-                "name": ann_obj.name
+                "name": ann_obj.name,
             }
-    
+
             frame_anns.append(box)
-        if len(frame_anns)>0:
+        if len(frame_anns) > 0:
             seq_gt[seq_id] = frame_anns
     return seq_gt

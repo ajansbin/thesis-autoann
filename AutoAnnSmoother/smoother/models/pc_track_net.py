@@ -1,6 +1,14 @@
 import torch
 from torch import nn
 from torch.nn import functional
+from smoother.models.positional_encoder import SinusoidalPositionalEncoding
+from smoother.models.temporal_encoder import (
+    PoolTempEnc,
+    LSTMTempEnc,
+    TransformerTempEnc,
+    FullTransformerTempEnc,
+)
+from smoother.models.backbone_encoders import TNet, PCEncoder, FuseEncoder, TrackEncoder
 
 ### NETS ###
 
@@ -8,35 +16,33 @@ from torch.nn import functional
 class PCTrackEarlyFusionNet(nn.Module):
     def __init__(
         self,
-        track_encoder: str,
-        pc_encoder: str,
-        decoder: str,
-        pc_feat_dim=4,
+        fuse_encoder_name: str,
+        encoder_out_size: str,
+        temporal_encoder_name: str,
+        dec_out_size=4,
         track_feat_dim=8,
-        pc_out=256,
-        track_out=64,
-        dec_out=16,
+        pc_feat_dim=3,
+        window_size=180,
     ):
         super(PCTrackEarlyFusionNet, self).__init__()
 
-        feat_dim = pc_feat_dim + track_feat_dim - 1
+        feat_dim = pc_feat_dim + track_feat_dim - 2
 
-        self.tp_encoder = get_encoder(
-            encoder_name=pc_encoder,
-            data_type="pc",
-            in_size=feat_dim,
-            out_size=pc_out - 1,
+        self.fuse_encoder = FuseEncoder(input_dim=feat_dim, out_size=encoder_out_size)
+
+        self.pos_enc = SinusoidalPositionalEncoding(
+            d_model=encoder_out_size, max_len=window_size
         )
 
-        self.tgt_enc = nn.Sequential(
-            nn.Linear(8, pc_out - 1),
-            nn.ReLU(),
+        self.temporal_encoder = get_temporal_encoder(
+            encoder_name=temporal_encoder_name, in_size=encoder_out_size
         )
-        self.temporal_transformer = TemporalTransformer(
-            in_size=pc_out, out_size=dec_out
-        )
-        # self.temporal_decoder = get_decoder(
-        #     decoder_name=decoder, in_size=pc_out, out_size=dec_out
+
+        self.heads = DecoderHeads(encoder_out_size, dec_out_size)
+
+        # self.tgt_enc = nn.Sequential(
+        #     nn.Linear(8, pc_out - 1),
+        #     nn.ReLU(),
         # )
 
     def forward(self, tracks, pcs):
@@ -48,76 +54,115 @@ class PCTrackEarlyFusionNet(nn.Module):
         """
         B, W, N, Fp = pcs.shape
 
+        # Mask out padded
+        s = torch.sum(tracks, dim=-1)
+        padding_mask = (s == 0).long()  # (B, W)
+
         tracks_expanded = tracks.unsqueeze(2).expand((-1, -1, N, -1))
 
-        # No need for duplicate temporal encoding
-        tp = torch.cat((pcs[:, :, :, :3], tracks_expanded), dim=-1)  # (B, W, N, 11)
+        # For now, remove temporal encoding. Add it in temporal encoding instead
+        tp = torch.cat((pcs[:, :, :, :3], tracks_expanded[:, :, :, :7]), dim=-1)
+        # (B, W, N, 10)
 
-        tp_enc = self.tp_encoder(tp)  # (B, W, pc_out-1)
+        tp_enc = self.fuse_encoder(tp, padding_mask)  # (B, W, encoder_out_size)
 
-        # Add temporal encoding to src tensor
-        temp_enc = pcs[:, :, 0, -1].unsqueeze(-1)  # (B,W,1)
-        src = torch.cat((tp_enc, temp_enc), dim=-1)  # (B, W, pc_out)
+        # Add sinusodial temporal encoding
+        tp_enc = self.pos_enc(tp_enc, padding_mask)
 
-        tracks_enc = self.tgt_enc(tracks)  # (B,W,pc_out-1)
-        tgt = torch.cat((tracks_enc, temp_enc), dim=-1)  # (B, W, pc_out)
+        # OBS: Not implemented for full-transformer yet
+        tp_temp_enc = self.temporal_encoder(tp_enc, padding_mask)
 
-        tp_dec = self.temporal_transformer(src, tgt)
+        center_out, size_out, rotation_out, score_out = self.heads(tp_temp_enc)
+
+        # tp_dec = self.temporal_transformer(
+        #     tp_enc,
+        #     track_enc,
+        #     src_key_padding_mask=padding_mask,
+        #     tgt_key_padding_mask=padding_mask,
+        # )
         # tp_dec = self.temporal_decoder(tp_enc)  # (B, W, 7)
 
-        return tp_dec
+        return center_out, size_out, rotation_out, score_out
 
 
 class PCTrackNet(nn.Module):
     def __init__(
         self,
-        track_encoder: str,
-        pc_encoder: str,
-        decoder: str,
-        pc_feat_dim=3,
+        track_encoder_name: str,
+        pc_encoder_name: str,
+        temporal_encoder_name: str,
         track_feat_dim=8,
-        pc_out=256,
+        pc_feat_dim=3,
         track_out=64,
-        dec_out=16,
+        pc_out=256,
+        dec_out_size=16,
+        window_size=180,
     ):
         super(PCTrackNet, self).__init__()
 
-        self.pc_encoder = get_encoder(
-            encoder_name=pc_encoder,
-            data_type="pc",
-            in_size=pc_feat_dim,
-            out_size=pc_out,
+        self.pc_encoder = PCEncoder(
+            input_dim=pc_feat_dim - 1, out_size=pc_out, dropout_rate=0.0
         )
 
-        self.track_encoder = get_encoder(
-            encoder_name=track_encoder,
-            data_type="track",
-            in_size=track_feat_dim,
-            out_size=track_out,
+        self.track_encoder = TrackEncoder(
+            input_dim=track_feat_dim - 1, out_size=track_out, dropout_rate=0.0
         )
 
-        dec_in_size = pc_out + track_out
-        self.temporal_decoder = get_decoder(
-            decoder_name=decoder, in_size=dec_in_size, out_size=dec_out
+        encoder_out_size = track_out + pc_out
+
+        self.pos_enc = SinusoidalPositionalEncoding(
+            d_model=encoder_out_size, max_len=window_size
         )
+
+        self.temporal_encoder = get_temporal_encoder(
+            encoder_name=temporal_encoder_name, in_size=encoder_out_size
+        )
+
+        self.heads = DecoderHeads(encoder_out_size, dec_out_size)
 
     def forward(self, tracks, pcs):
         """
-        Inputs: pcs     (B x W x N x 3)
+        Inputs: pcs     (B x W x N x 4)
                 tracks  (B x W x 8)
         Outputs:
                 tensor  (B x 7)
         """
-        pcs_enc = self.pc_encoder(pcs)  # Shape: (B x W x pc_out)
-        tracks_enc = self.track_encoder(tracks)  # Shape: (B x W x track_out)
 
-        x = torch.cat(
-            (pcs_enc, tracks_enc), dim=-1
-        )  # Shape: (B x W x pc_out+track_out)
+        # Mask out padded
+        # print("TRACKS")
+        # print(tracks)
 
-        x_dec = self.temporal_decoder(x)  # Shape (B x 7)
+        s = torch.sum(tracks, dim=-1)
+        padding_mask = (s == 0).long()  # (B, W)
+        # print("MASK")
+        # print(padding_mask)
 
-        return x_dec
+        # out shape: (B x W x pc_out)
+        # Remove temporal encoding
+        pcs_enc = self.pc_encoder(pcs[:, :, :, :-1], padding_mask)
+
+        # out shape: (B x W x track_out)
+        # Remove temporal encoding
+        tracks_enc = self.track_encoder(tracks[:, :, :-1], padding_mask)
+
+        # out shape: (B x W x pc_out+track_out)
+        tp_enc = torch.cat((pcs_enc, tracks_enc), dim=-1)
+        # print("TP ENC")
+        # print(tp_enc)
+
+        # Add sinusodial temporal encoding
+        tp_enc = self.pos_enc(tp_enc, padding_mask)
+        # print("TP ENC SINUS")
+        # print(tp_enc)
+
+        # OBS: Not implemented for full-transformer yet
+        tp_temp_enc = self.temporal_encoder(tp_enc, padding_mask)
+        # print("TP ENC Temp")
+        # print(tp_temp_enc)
+
+        center_out, size_out, rotation_out, score_out = self.heads(tp_temp_enc)
+
+        return center_out, size_out, rotation_out, score_out
 
 
 class PCNet(nn.Module):
@@ -200,85 +245,7 @@ class TrackNet(nn.Module):
         return tracks_dec
 
 
-### ENCODERS ###
-
-
-class TNet(nn.Module):
-    def __init__(self, k, out_size=256):
-        super(TNet, self).__init__()
-        self.k = k
-        self.out_size = out_size
-        self.mlp = nn.Sequential(
-            nn.Linear(k, 32),
-            nn.ReLU(),
-            # nn.Linear(32, 64),
-            # nn.ReLU(),
-            nn.Linear(32, out_size),
-            nn.ReLU(),
-        )
-        self.fc = nn.Linear(out_size, k * k)
-        self.register_buffer("identity", torch.eye(k))
-
-    def forward(self, x):
-        batch_size = x.size(0)
-        x = self.mlp(x)
-        x = torch.max(x, 1, keepdim=True)[0]
-        x = x.view(-1, self.out_size)
-        x = self.fc(x)
-        x = x.view(batch_size, self.k, self.k) + self.identity
-        return x
-
-
-class PCEncoder(nn.Module):
-    def __init__(self, input_dim=4, out_size=256, dropout_rate=0.5):
-        super(PCEncoder, self).__init__()
-        self.tnet4 = TNet(input_dim, out_size)
-        self.conv1 = nn.Conv1d(input_dim, 64, 1)
-        self.conv2 = nn.Conv1d(64, out_size, 1)
-        # self.conv3 = nn.Conv1d(128, 256, 1)
-        # self.conv4 = nn.Conv1d(256, out_size, 1)
-        self.dropout = nn.Dropout(dropout_rate)
-
-    def forward(self, x):
-        B, W, N, F = x.shape
-        x = x.view(B * W, N, F)  # B*W, N,F
-        tnet4 = self.tnet4(x)
-        x = torch.bmm(x, tnet4).transpose(1, 2)
-        x = functional.relu(self.dropout(self.conv1(x)))
-        # x = functional.relu(self.dropout(self.conv2(x)))
-        # x = functional.relu(self.dropout(self.conv3(x)))
-        x = self.dropout(self.conv2(x))
-        x = torch.max(x, 2, keepdim=True)[0]
-        x = x.view(B, W, -1)
-        return x
-
-
-class TrackEncoder(nn.Module):
-    def __init__(self, input_dim=8, out_size=64, dropout_rate=0.5):
-        super(TrackEncoder, self).__init__()
-        self.tnet8 = TNet(input_dim, out_size)
-        self.conv1 = nn.Conv1d(input_dim, 32, 1)
-        self.conv2 = nn.Conv1d(32, out_size, 1)
-        # self.conv3 = nn.Conv1d(64, out_size, 1)
-
-        self.dropout = nn.Dropout(dropout_rate)
-
-    def forward(self, x):
-        B, W, F = x.shape
-        x = x.view(B * W, 1, F)
-        tnet8 = self.tnet8(x)
-        x = torch.bmm(x, tnet8).transpose(1, 2)
-        x = functional.relu(self.dropout(self.conv1(x)))
-        # x = functional.relu(self.dropout(self.conv2(x)))
-        x = self.dropout(self.conv2(x))
-        x = torch.max(x, 2, keepdim=True)[0]
-        x = x.view(B, W, -1)
-        return x
-
-
 ### DECODERS ###
-
-
 class DecoderHeads(nn.Module):
     def __init__(self, in_size, out_size):
         super(DecoderHeads, self).__init__()
@@ -305,97 +272,10 @@ class DecoderHeads(nn.Module):
         center_out = self.fc_center(x)  # (B, W, 3)
         rotation_out = self.fc_rotation(x)  # (B, W, 1)
         score_out = torch.sigmoid(self.fc_gt(x))  # (B, W, 1)
-
         # All frame max pool size
         x_pooled = torch.max(x, 1)[0]  # (B, F)
         size_out = self.fc_size(x_pooled)  # (B, 3)
 
-        return center_out, size_out, rotation_out, score_out
-
-
-class PoolDecoder(nn.Module):
-    def __init__(self, in_size, out_size):
-        super(PoolDecoder, self).__init__()
-        mlp_hidden_size = 128
-        self.mlp = nn.Sequential(
-            nn.Linear(in_size, mlp_hidden_size),
-            nn.ReLU(),
-            nn.Linear(mlp_hidden_size, mlp_hidden_size),
-            nn.ReLU(),
-        )
-        self.heads = DecoderHeads(mlp_hidden_size, out_size)
-
-    def forward(self, x):
-        """
-        Inputs: x (B,W,F)
-        """
-        B, W, F = x.shape
-        x_pooled = torch.max(x, 1)[0].unsqueeze(1)  # (B,1,F)
-        x_expanded = x_pooled.expand((-1, W, -1))  # (B,W,F)
-        x_expanded = self.mlp(x_expanded)  # Pass the input through the MLP: (B, W, F)
-        center_out, size_out, rotation_out, score_out = self.heads(x_expanded)
-        return center_out, size_out, rotation_out, score_out
-
-
-class LSTMDecoder(nn.Module):
-    def __init__(self, input_size, output_head_size):
-        super(LSTMDecoder, self).__init__()
-        lstm_hidden_size = 32
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=lstm_hidden_size,
-            num_layers=1,
-            batch_first=True,
-        )
-        self.heads = DecoderHeads(lstm_hidden_size, output_head_size)
-
-    def forward(self, x):
-        x, _ = self.lstm(x)  # Shape: (B, W, lstm_hidden_size)
-        center_out, size_out, rotation_out, score_out = self.heads(x)
-        return center_out, size_out, rotation_out, score_out
-
-
-class TransformerDecoder(nn.Module):
-    def __init__(self, in_size, out_size):
-        super(TransformerDecoder, self).__init__()
-
-        t_encoder_layer = nn.TransformerEncoderLayer(
-            d_model=in_size, nhead=8, dim_feedforward=in_size * 4, dropout=0.5
-        )
-        self.transformer = nn.TransformerEncoder(
-            encoder_layer=t_encoder_layer, num_layers=4
-        )
-        self.heads = DecoderHeads(in_size, out_size)
-
-    def forward(self, x):
-        x = x.permute(1, 0, 2)  # Transformer requires input shape: (W, B, F)
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)
-
-        center_out, size_out, rotation_out, score_out = self.heads(x)
-        return center_out, size_out, rotation_out, score_out
-
-
-class TemporalTransformer(nn.Module):
-    def __init__(self, in_size, out_size):
-        super(TemporalTransformer, self).__init__()
-
-        self.transformer = nn.Transformer(
-            d_model=in_size,
-            nhead=8,
-            num_encoder_layers=6,
-            num_decoder_layers=6,
-            dim_feedforward=in_size * 4,
-            dropout=0.5,
-            batch_first=True,
-        )
-
-        self.heads = DecoderHeads(in_size, out_size)
-
-    def forward(self, x_enc, x_dec):
-        x = self.transformer(x_enc, x_dec)
-
-        center_out, size_out, rotation_out, score_out = self.heads(x)
         return center_out, size_out, rotation_out, score_out
 
 
@@ -413,11 +293,15 @@ def get_encoder(
     )
 
 
-def get_decoder(decoder_name: str, in_size: int, out_size: int) -> nn.Module:
-    if decoder_name == "pool":
-        return PoolDecoder(in_size, out_size)
-    elif decoder_name.lower() == "lstm":
-        return LSTMDecoder(in_size, out_size)
-    elif decoder_name == "transformer":
-        return TransformerDecoder(in_size, out_size)
-    raise NotImplementedError(f"Decoder of type {decoder_name} is not implemented.")
+def get_temporal_encoder(encoder_name: str, in_size):
+    if encoder_name == "pool":
+        return PoolTempEnc(in_size)
+    if encoder_name == "lstm":
+        return LSTMTempEnc(in_size)
+    if encoder_name == "transformer":
+        return TransformerTempEnc(in_size)
+    if encoder_name == "full-transformer":
+        return FullTransformerTempEnc(in_size)
+    raise NotImplementedError(
+        f"Temporal encoder of type {encoder_name} is not implemented."
+    )

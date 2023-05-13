@@ -117,12 +117,12 @@ class TrackingData:
         if "pc_path" in self.tracking_results.config["data"]:
             root_pc_path = self.tracking_results.config["data"]["pc_path"]
         else:
-            root_pc_path = "/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train"
+            split = self.tracking_results.split
+            root_pc_path = f"/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/1/full_{split}"
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
         pc = torch.from_numpy(np.load(pc_path)).float()
-
         if pc.shape[0] > self.max_track_length:
             pc = pc[: self.max_track_length, :]
         return pc
@@ -275,16 +275,17 @@ class WindowTrackingData:
         self.points_transformations = points_transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
-        self.seqs = None
+        self.seqs = seqs
 
         print("Loading sequences...")
         self.tracking_data = TrackingData(
-            tracking_results,
+            self.tracking_results,
             self.transformations,
             self.points_transformations,
             self.remove_non_foi_tracks,
             self.remove_non_gt_tracks,
-            seqs,
+            self.seqs,
+            self.use_pc,
         )
 
         print(f"Finished loading {len(self.tracking_data) * self.times} data samples!")
@@ -434,26 +435,24 @@ class WindowTrackingData:
         rotation_matrix = self._get_rotation_matrix(offset_rotation)
 
         # Offset center and rotation for tracks
+        track_centers = wind_track_data[first_index : last_index + 1, 0:3]
         offset_track_data = copy.deepcopy(wind_track_data)
 
-        # print("track_centers", track_centers.shape)
-
         offset_track_data[first_index : last_index + 1, 0:3] = self.transform(
-            offset_track_data[first_index : last_index + 1, 0:3].unsqueeze(1),
-            offset_center,
-            rotation_matrix,
+            track_centers.unsqueeze(1), offset_center, rotation_matrix
         ).squeeze(1)
         offset_track_data[first_index : last_index + 1, 6:7] = (
             wind_track_data[first_index : last_index + 1, 6:7] - offset_rotation
         )
 
         # Offset all points using center
-        offset_point_data = copy.deepcopy(wind_point_data)
-        offset_point_data[first_index : last_index + 1, :, 0:3] = self.transform(
-            wind_point_data[first_index : last_index + 1, :, 0:3],
-            offset_center,
-            rotation_matrix,
-        )
+        if self.use_pc:
+            offset_point_data = copy.deepcopy(wind_point_data)
+            offset_point_data[first_index : last_index + 1, :, 0:3] = self.transform(
+                wind_point_data[first_index : last_index + 1, :, 0:3],
+                offset_center,
+                rotation_matrix,
+            )
 
         # Offset center and yaw for gt_data
         offset_gt_data = copy.deepcopy(gt_data)
@@ -477,11 +476,14 @@ class WindowTrackingData:
         offset_track_data[:first_index, -1] = 0
         offset_track_data[last_index + 1 :, -1] = 0
 
-        offset_point_data[first_index : last_index + 1, :, -1] = (
-            offset_point_data[first_index : last_index + 1, :, -1] - first_index
-        )
-        offset_point_data[:first_index, :, -1] = 0
-        offset_point_data[last_index + 1 :, :, -1] = 0
+        if self.use_pc:
+            offset_point_data[first_index : last_index + 1, :, -1] = (
+                offset_point_data[first_index : last_index + 1, :, -1] - first_index
+            )
+            offset_point_data[:first_index, :, -1] = 0
+            offset_point_data[last_index + 1 :, :, -1] = 0
+        else:
+            offset_point_data = wind_point_data
 
         return offset_track_data, offset_point_data, offset_gt_data
 
@@ -495,11 +497,6 @@ class WindowTrackingData:
         center (3)
         rotation_matrix (3,3)
         """
-
-        print(points.shape)
-        if points.shape[1] == 1:
-            print("points")
-            print(points)
 
         rot_mat_transpose = rotation_matrix.T
         inverse_translate = -rot_mat_transpose @ center.unsqueeze(-1)
@@ -519,9 +516,5 @@ class WindowTrackingData:
 
         # Remove the homogeneous coordinate
         local_points = local_points.permute(0, 2, 1)[:, :, :3]
-
-        if points.shape[1] == 1:
-            print("local_points")
-            print(local_points)
 
         return local_points

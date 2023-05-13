@@ -157,7 +157,7 @@ class Tracklet:
             self.foi_index = box.frame_index
 
     def get_foi_box(self) -> TrackingBox:
-        assert self.foi_index is not None, "Error: Track has no foi_index!"
+        assert self.foi_index is not None, "Error:box Track has no foi_index!"
         foi_box = self.boxes[self.foi_index - self.starting_frame_index]
         # assert foi_box.is_foi
         return copy.deepcopy(foi_box)
@@ -180,8 +180,7 @@ class Tracklet:
             valid_match = dists[gt_idx] >= self.assoc_thres
 
         closest_gt = copy.deepcopy(gt_boxes[gt_idx])
-
-        if valid_match:
+        if valid_match and closest_gt["detection_name"] == foi_box.tracking_name:
             self.has_gt = True
             self.gt_box = closest_gt
             self.gt_dist = gt_dist

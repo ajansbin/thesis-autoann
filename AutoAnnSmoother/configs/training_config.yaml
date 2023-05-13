@@ -1,5 +1,9 @@
 ### PCTrackNet ###
 model:
+  early_fuse: # fuse points and tracks before encoding
+    early_fuse: false
+    fuse_encoder: pointnet # one of [pointnet]
+    encoder_out_size: 128
   pc:
     use_pc: true
     pc_encoder: pointnet # one of [pointnet]
@@ -8,6 +12,8 @@ model:
     use_track: true
     track_encoder: pointnet # one of [pointnet]
     track_out_size: 64
+  temporal_encoder: transformer # one of [pool, lstm, transformer, full-transformer]
+  dec_out_size: 8
   decoder:
     name: transformer # one of [pool, lstm, transformer]
     dec_out_size: 8
@@ -27,7 +33,7 @@ data:
   association_thresholds:
     giou: 0.0
     l2: 2
-  remove_bottom_center: true # if increases the z dimension by half the height for the detections
+  remove_bottom_center: false # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: false
   pc_offset: true
   transformations:

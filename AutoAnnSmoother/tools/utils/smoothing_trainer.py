@@ -61,9 +61,8 @@ class SmoothingTrainer:
         self.random_slides = self.conf["data"]["random_slides"]
         self.remove_non_gt_tracks = self.conf["data"]["remove_non_gt_tracks"]
 
-        self.early_fuse = self.conf["model"]["early_fuse"]
+        # Needed for both model and dataclass
         self.use_pc = self.conf["model"]["pc"]["use_pc"]
-        self.use_track = self.conf["model"]["track"]["use_track"]
 
         self.lr = self.conf["train"]["learning_rate"]
         self.wd = self.conf["train"]["weight_decay"]
@@ -83,7 +82,9 @@ class SmoothingTrainer:
         self.result_dict = {}
 
         print("---Setting up wandb-logger---")
-        self.log_out = configure_loggings(self.run_name, self.save_dir, self.conf)
+        self.log_out, self.run = configure_loggings(
+            self.run_name, self.save_dir, self.conf
+        )
 
     def _get_config(self, conf_path):
         return load_config(conf_path)
@@ -209,28 +210,46 @@ class SmoothingTrainer:
 
     def load_model(self):
         print("---Loading model---")
-        self.use_pc = self.conf["model"]["pc"]["use_pc"]
-        self.use_track = self.conf["model"]["track"]["use_track"]
+        self.early_fuse = self.conf["model"]["early_fuse"]["early_fuse"]
+        fuse_encoder = self.conf["model"]["early_fuse"]["fuse_encoder"]
+        encoder_out_size = self.conf["model"]["early_fuse"]["encoder_out_size"]
 
+        self.use_pc = self.conf["model"]["pc"]["use_pc"]
         pc_encoder = self.conf["model"]["pc"]["pc_encoder"]
         pc_out_size = self.conf["model"]["pc"]["pc_out_size"]
+
+        self.use_track = self.conf["model"]["track"]["use_track"]
         track_encoder = self.conf["model"]["track"]["track_encoder"]
         track_out_size = self.conf["model"]["track"]["track_out_size"]
-        decoder_name = self.conf["model"]["decoder"]["name"]
-        dec_out_size = self.conf["model"]["decoder"]["dec_out_size"]
 
-        model_class = self._get_model(self.early_fuse, self.use_pc, self.use_track)
+        temporal_encoder = self.conf["model"]["temporal_encoder"]
+        dec_out_size = self.conf["model"]["dec_out_size"]
 
-        self.model = model_class(
-            track_encoder=track_encoder,
-            pc_encoder=pc_encoder,
-            decoder=decoder_name,
-            pc_feat_dim=POINT_FEAT_DIM,
-            track_feat_dim=TRACK_FEAT_DIM,
-            pc_out=pc_out_size,
-            track_out=track_out_size,
-            dec_out=dec_out_size,
-        )
+        # decoder_name = self.conf["model"]["decoder"]["name"]
+        # dec_out_size = self.conf["model"]["decoder"]["dec_out_size"]
+
+        if self.early_fuse:
+            self.model = PCTrackEarlyFusionNet(
+                fuse_encoder,
+                encoder_out_size,
+                temporal_encoder,
+                dec_out_size,
+                track_feat_dim=TRACK_FEAT_DIM,
+                pc_feat_dim=POINT_FEAT_DIM,
+                window_size=self.window_size,
+            )
+        elif self.use_pc and self.use_track:
+            self.model = PCTrackNet(
+                track_encoder_name=track_encoder,
+                pc_encoder_name=pc_encoder,
+                temporal_encoder_name=temporal_encoder,
+                track_feat_dim=TRACK_FEAT_DIM,
+                pc_feat_dim=POINT_FEAT_DIM,
+                track_out=track_out_size,
+                pc_out=pc_out_size,
+                dec_out_size=dec_out_size,
+                window_size=self.window_size,
+            )
 
     def _get_model(self, early_fuse, use_pc, use_track):
         if early_fuse:
