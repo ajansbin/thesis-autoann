@@ -48,5 +48,14 @@ python tools/train.py --config configs/training_config.yaml \
 
 ## Inference / Testing
 
-ToDo
+For Inference, please use config file provided by the trained model. Then run the following:
 
+``` bash
+python tools/infer.py --config /configs/model_conf.json  \
+    --data-path /path-to-zod \
+    --version full \
+    --split val \
+    --save-path /out-dir-path \
+    --result-path /tracking-results-json-path  \
+    --model-path /model.pth
+```
