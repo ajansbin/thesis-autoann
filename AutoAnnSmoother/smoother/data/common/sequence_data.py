@@ -1,16 +1,11 @@
-import tqdm
 from collections import defaultdict
 from smoother.data.common.dataclasses import TrackingBox, Tracklet
-from smoother.data.common.transformations import Transformation, ToTensor
-import torch
-import numpy as np
 from smoother.data.common.transformations import CenterOffset, Normalize, YawOffset
 from smoother.data.common.utils import convert_to_sine_cosine
 import copy
 
 
-class SequenceData():
-
+class SequenceData:
     def __init__(self, tracking_results, sequence_id, transformations=[]):
         self.tracking_results = tracking_results
         self.sequence_id = sequence_id
@@ -20,7 +15,7 @@ class SequenceData():
         self.use_pc = self.tracking_results.config["model"]["pc"]["use_pc"]
         self.data_conf = self.tracking_results.config["data"]
         self.pc_offset = self.tracking_results.config["data"]["pc_offset"]
-        
+
         self.assoc_metric = self.tracking_results.assoc_metric
         self.assoc_thres = self.tracking_results.assoc_thres
 
@@ -35,11 +30,17 @@ class SequenceData():
 
         # set center_offset_transformation index for later look-up
         for i, transformation in enumerate(self.transformations):
-            if self._get_full_class_path(transformation) == self._get_full_class_path(CenterOffset):
+            if self._get_full_class_path(transformation) == self._get_full_class_path(
+                CenterOffset
+            ):
                 self.center_offset_index = i
-            if self._get_full_class_path(transformation) == self._get_full_class_path(YawOffset):
+            if self._get_full_class_path(transformation) == self._get_full_class_path(
+                YawOffset
+            ):
                 self.yaw_offset_index = i
-            if self._get_full_class_path(transformation) == self._get_full_class_path(Normalize):
+            if self._get_full_class_path(transformation) == self._get_full_class_path(
+                Normalize
+            ):
                 self.normalize_index = i
 
     def _get_full_class_path(self, obj):
@@ -54,11 +55,11 @@ class SequenceData():
         track = self.data_samples[index]
 
         return track
-    
+
     # returs the track object. Useful for retrieving information about the track.
     def get(self, track_index):
         return self.data_samples[track_index]
-    
+
     def get_foi_index(self, track_index):
         track = self.data_samples[track_index]
         return track.foi_index
@@ -66,36 +67,43 @@ class SequenceData():
     def _get_data_samples(self):
         sequence_data = self._format_sequence_data()
         for track_id, track in sequence_data.items():
-                yield track
+            yield track
 
     def _format_sequence_data(self):
-
         sequence_frames = self.tracking_results.get_frames_in_sequence(self.sequence_id)
         track_ids = {}
         track_ids = defaultdict(None)
         for frame_index, frame_token in enumerate(sequence_frames):
-            frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(frame_token)
+            frame_pred_boxes = self.tracking_results.get_pred_boxes_from_frame(
+                frame_token
+            )
             if frame_pred_boxes == []:
-                continue   
+                continue
             for b in frame_pred_boxes:
                 box = copy.deepcopy(b)
-                box["is_foi"] = False #self.tracking_results.foi_indexes[self.sequence_id] == frame_index
+                box["is_foi"] = False
                 box["frame_index"] = frame_index
                 box["frame_token"] = frame_token
 
                 if self.remove_bottom_center:
-                    box["translation"][-1] = box["translation"][-1] + box["size"][-1]/2
+                    box["translation"][-1] = (
+                        box["translation"][-1] + box["size"][-1] / 2
+                    )
 
-                #convert Quaternion to polar angle representation
-                box['rotation'] = convert_to_sine_cosine(box['rotation'])
+                # convert Quaternion to polar angle representation
+                box["rotation"] = convert_to_sine_cosine(box["rotation"])
 
                 tracking_box = TrackingBox.from_dict(box)
                 tracking_id = tracking_box.tracking_id
 
                 if tracking_id not in track_ids:
-                    #foi_index = tracking_box.frame_index if tracking_box.is_foi else None
-                    track_ids[tracking_id] = Tracklet(self.sequence_id, tracking_id, frame_index, self.assoc_metric, self.assoc_thres)
+                    track_ids[tracking_id] = Tracklet(
+                        self.sequence_id,
+                        tracking_id,
+                        frame_index,
+                        self.assoc_metric,
+                        self.assoc_thres,
+                    )
                 track_ids[tracking_id].add_box(tracking_box)
 
         return track_ids
-    

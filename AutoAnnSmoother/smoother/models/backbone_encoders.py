@@ -13,8 +13,6 @@ class TNet(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(k, 32),
             nn.ReLU(),
-            # nn.Linear(32, 64),
-            # nn.ReLU(),
             nn.Linear(32, out_size),
             nn.ReLU(),
         )
@@ -32,13 +30,11 @@ class TNet(nn.Module):
 
 
 class FuseEncoder(nn.Module):
-    def __init__(self, input_dim=10, out_size=256, dropout_rate=0.0):
+    def __init__(self, input_dim, out_size, dropout_rate=0.0):
         super(FuseEncoder, self).__init__()
         self.tnet = TNet(input_dim, out_size)
         self.conv1 = nn.Conv1d(input_dim, 64, 1)
         self.conv2 = nn.Conv1d(64, out_size, 1)
-        # self.conv3 = nn.Conv1d(128, out_size, 1)
-        # self.conv4 = nn.Conv1d(256, out_size, 1)
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x, padding_mask):
@@ -52,7 +48,6 @@ class FuseEncoder(nn.Module):
         tnet = self.tnet(x)
         x = torch.bmm(x, tnet).transpose(1, 2)
         x = functional.relu(self.dropout(self.conv1(x)))
-        # x = functional.relu(self.dropout(self.conv2(x)))
         x = self.dropout(self.conv2(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(B, W, -1)
@@ -69,9 +64,6 @@ class PCEncoder(nn.Module):
         super(PCEncoder, self).__init__()
         self.tnet = TNet(input_dim, out_size)
         self.conv1 = nn.Conv1d(input_dim, out_size, 1)
-        # self.conv2 = nn.Conv1d(64, out_size, 1)
-        # self.conv3 = nn.Conv1d(128, 256, 1)
-        # self.conv4 = nn.Conv1d(256, out_size, 1)
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x, padding_mask):
@@ -84,9 +76,6 @@ class PCEncoder(nn.Module):
         x = x.view(B * W, N, F)  # B*W, N,F
         tnet = self.tnet(x)
         x = torch.bmm(x, tnet).transpose(1, 2)
-        # x = functional.relu(self.dropout(self.conv1(x)))
-        # x = functional.relu(self.dropout(self.conv2(x)))
-        # x = functional.relu(self.dropout(self.conv3(x)))
         x = self.dropout(self.conv1(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(B, W, -1)
@@ -103,8 +92,6 @@ class TrackEncoder(nn.Module):
         super(TrackEncoder, self).__init__()
         self.tnet = TNet(input_dim, out_size)
         self.conv1 = nn.Conv1d(input_dim, out_size, 1)
-        # self.conv2 = nn.Conv1d(32, out_size, 1)
-        # self.conv3 = nn.Conv1d(64, out_size, 1)
 
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -118,8 +105,6 @@ class TrackEncoder(nn.Module):
         x = x.view(B * W, 1, F)
         tnet = self.tnet(x)
         x = torch.bmm(x, tnet).transpose(1, 2)
-        # x = functional.relu(self.dropout(self.conv1(x)))
-        # x = functional.relu(self.dropout(self.conv2(x)))
         x = self.dropout(self.conv1(x))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(B, W, -1)

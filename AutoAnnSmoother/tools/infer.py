@@ -1,5 +1,6 @@
 from tools.utils.smoothing_inferer import SmoothingInferer
 
+
 def main(
     config: str,
     data_path: str,
@@ -7,11 +8,15 @@ def main(
     save_path: str,
     result_path: str,
     model_path: str,
+    version: str,
+    split: str,
 ):
-    model = SmoothingInferer(result_path, config, data_path, pc_name, save_path)
+    model = SmoothingInferer(
+        result_path, config, data_path, version, split, pc_name, save_path
+    )
     model.load_data()
     model.load_model(model_path)
-    model.infer()
+    model.infer(N=15)
 
 
 if __name__ == "__main__":
@@ -21,7 +26,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--result-path",
         type=str,
-        default="/home/s0001671/workspace/storage/results/nuscenes-centerpoint-valsplit-trackresults.json",
+        default="result.json",
     )
     parser.add_argument(
         "--config",
@@ -43,6 +48,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--save-path", type=str, default="/storage/train")
     parser.add_argument("--model-path", type=str, default="run1", help="Model run name")
+    parser.add_argument("--version", default="mini", choices=["full", "mini"])
+    parser.add_argument("--split", type=str, default="train", choices=["train", "val"])
 
     args = parser.parse_args()
 
@@ -53,4 +60,6 @@ if __name__ == "__main__":
         args.save_path,
         args.result_path,
         args.model_path,
+        args.version,
+        args.split,
     )

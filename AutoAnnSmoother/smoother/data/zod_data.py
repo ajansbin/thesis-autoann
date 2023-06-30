@@ -5,9 +5,13 @@ from zod.constants import Lidar
 from smoother.data.loading.loader import load_prediction
 from smoother.data.loading.zod_loader import load_gt
 from zod.data_classes.geometry import Pose
-import copy
 
-OBJECT_CLASSES_DYNAMIC = ["Vehicle", "VulnerableVehicle", "Pedestrian"]
+OBJECT_CLASSES_DYNAMIC = [
+    "Vehicle",
+    "VulnerableVehicle",
+    "Pedestrian",
+    "Animal",
+]
 OBJECT_CLASSES_STATIC = [
     "PoleObject",
     "TrafficBeacon",
@@ -16,7 +20,11 @@ OBJECT_CLASSES_STATIC = [
     "TrafficGuide",
     "DynamicBarrier",
 ]
-OBJECT_CLASSES = [*OBJECT_CLASSES_DYNAMIC]
+OBJECT_CLASSES = [
+    *OBJECT_CLASSES_DYNAMIC,
+    *OBJECT_CLASSES_STATIC,
+    "Inconclusive",
+]
 
 
 class ZodTrackingResults(TrackingResultsBase):
@@ -52,6 +60,9 @@ class ZodTrackingResults(TrackingResultsBase):
         self.pred_boxes, self.meta = self.load_tracking_predictions(
             self.tracking_results_path
         )
+
+        self.class_name = self._get_class_name()
+
         self.gt_boxes = self.load_gt_detections()
         self.gt_frames = self.map_seq_id_to_gt(self.gt_boxes)
 
@@ -63,6 +74,7 @@ class ZodTrackingResults(TrackingResultsBase):
     def load_gt_detections(self):
         return load_gt(
             self.zod,
+            self.class_name,
             self.seq_tokens,
             motion_compensate=self.motion_comp,
             world_coord=self.world_coord,
@@ -80,9 +92,6 @@ class ZodTrackingResults(TrackingResultsBase):
     def get_sequence_id_from_index(self, index):
         return self.seq_tokens[index]
 
-    # def get_sequence_from_id(self, id):
-    #    return self.zod[id]
-
     def get_class_label(self, class_name):
         return self.object_classes.index(class_name)
 
@@ -93,15 +102,12 @@ class ZodTrackingResults(TrackingResultsBase):
         return frame_tokens
 
     def get_pred_boxes_from_frame(self, frame_token):
-        pred_boxes = copy.deepcopy(self.pred_boxes[frame_token])
+        pred_boxes = self.pred_boxes[frame_token]
         return pred_boxes[0] if len(pred_boxes) > 0 else pred_boxes
 
     def get_gt_boxes_from_frame(self, frame_token):
         seq_token = frame_token[0:6]
         return self.gt_boxes.get(seq_token, [])
-
-    # def get_first_frame_in_sequence(self, seq):
-    #    raise NotImplementedError
 
     def get_number_of_sequences(self):
         return len(self.zod)
@@ -109,10 +115,6 @@ class ZodTrackingResults(TrackingResultsBase):
     def get_length_of_sequence(self, seq):
         lidar_frames = seq.info.get_lidar_frames(lidar=Lidar.VELODYNE)
         return len(lidar_frames)
-
-    def get_timestamp_from_frame(self, frame_token):
-        # a frame token looks like this 000002_romeo_2022-06-13T10:49:57.555450Z.npy. Extract time-date from name
-        return
 
     def get_foi_index(self, seq_token):
         return self.foi_indexes[seq_token]
@@ -154,3 +156,9 @@ class ZodTrackingResults(TrackingResultsBase):
             frame_token, frame_index, lidar=False
         ).points
         return points
+
+    def _get_class_name(self):
+        for frame_id, frame_preds in self.pred_boxes.items():
+            if len(frame_preds[0]) > 0:
+                for pred in frame_preds[0]:
+                    return pred["tracking_name"]

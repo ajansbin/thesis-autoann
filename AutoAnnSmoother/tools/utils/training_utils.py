@@ -1,9 +1,6 @@
 import torch
-from torch import nn
-import numpy as np
-from smoother.io.logging_utils import log_batch_stats, log_epoch_stats
+from smoother.io.logging_utils import log_epoch_stats
 from smoother.models.box_refinement_loss import BoxRefinementLoss
-import tqdm
 
 
 class TrainingUtils:
@@ -22,7 +19,7 @@ class TrainingUtils:
 
         loss_conf = self.conf["loss"]
         normalize_conf = self.conf["data"]["transformations"]["normalize"]
-        self.brl = BoxRefinementLoss(loss_conf, normalize_conf)
+        self.brl = BoxRefinementLoss(loss_conf, normalize_conf, self.device)
         self.loss_fn = self.brl.loss
 
     def training_loop(self, model, optimizer, n_epochs, train_loader, val_loader):
@@ -31,10 +28,10 @@ class TrainingUtils:
         model.to(self.device)
         train_losses, val_losses = [], []
 
-        # for epoch in tqdm.tqdm()
         for epoch in range(1, n_epochs + 1):
             print("Epoch nr", epoch)
             model, train_loss = self._train_epoch(model, optimizer, train_loader, epoch)
+
             print("Epoch training finished! Starting validation")
             val_loss, metrics = self._validate(model, val_loader, epoch)
 
@@ -51,7 +48,8 @@ class TrainingUtils:
 
             losses = {"train_loss": log_train_loss, "val_loss": log_val_loss}
             log_epoch_stats(losses, metrics, epoch, mode="TRAIN", log_out=self.log_out)
-            self.scheduler.step()
+            if epoch % 5 == 0:
+                self.scheduler.step()
         return model, train_losses, val_losses
 
     def _train_epoch(self, model, optimizer, train_loader, epoch):
@@ -65,37 +63,47 @@ class TrainingUtils:
                 x2.to(self.device),
                 y.to(self.device),
             )
+            """
+            tracks  (B,W,8)
+            points  (B,W,N,4)
+            gt_anns (B,9)
+            
+            """
+            batch_size, window_size, _ = tracks.shape
+
             optimizer.zero_grad()
+
             center_out, size_out, rotation_out, score_out = model.forward(
                 tracks, points
             )
 
+            # Take out indices that corresponds to foi box
             foi_indexes = gt_anns[:, -1].long()
-            foi_tracks = tracks[torch.arange(tracks.size(0)), foi_indexes]
-            foi_centers = center_out[torch.arange(center_out.size(0)), foi_indexes]
-            foi_rotations = rotation_out[
-                torch.arange(rotation_out.size(0)), foi_indexes
-            ]
-            foi_score = score_out[torch.arange(score_out.size(0)), foi_indexes]
 
+            batch_range = torch.arange(batch_size)
+
+            # Take out corresponding foi_box from tracks, centers, rotations and score
+            foi_tracks = tracks[batch_range, foi_indexes]  # (B,8)
+            foi_centers = center_out[batch_range, foi_indexes]  # (B,3)
+            foi_rotations = rotation_out[batch_range, foi_indexes]  # (B,1)
+            foi_score = score_out[batch_range, foi_indexes]  # (B,1)
+
+            # Add output to original track
             c_hat = foi_tracks[:, 0:3] + foi_centers
             s_hat = foi_tracks[:, 3:6] + size_out
-            r_hat = foi_tracks[:, 6].unsqueeze(-1) + foi_rotations
+            r_hat = foi_tracks[:, 6:7] + foi_rotations
 
             loss = self.loss_fn(
-                c_hat.view(-1, self.center_dim),
-                s_hat.view(-1, self.size_dim),
-                r_hat.view(-1, self.rotation_dim),
-                foi_score.view(-1, self.score_dim),
+                c_hat,
+                s_hat,
+                r_hat,
+                foi_score,
                 gt_anns.float(),
             )
 
             loss.backward()
             optimizer.step()
             train_loss_batches.append(loss.item())
-
-            # if batch_index % 50 == 0:
-            #    log_batch_stats(loss,None,epoch, batch_index, num_batches, 'train', self.log_out)
 
         return model, train_loss_batches
 
@@ -129,20 +137,20 @@ class TrainingUtils:
 
                 c_hat = foi_tracks[:, 0:3] + foi_centers
                 s_hat = foi_tracks[:, 3:6] + size_out
-                r_hat = foi_tracks[:, 6].unsqueeze(-1) + foi_rotations
+                r_hat = foi_tracks[:, 6:7] + foi_rotations
 
                 loss = self.loss_fn(
-                    c_hat.view(-1, self.center_dim),
-                    s_hat.view(-1, self.size_dim),
-                    r_hat.view(-1, self.rotation_dim),
-                    foi_score.view(-1, self.score_dim),
+                    c_hat,
+                    s_hat,
+                    r_hat,
+                    foi_score,
                     gt_anns.float(),
                 )
                 val_loss_cum += loss.item()
                 if epoch % self.eval_every == 0:
-                    foi_dets = tracks[
-                        torch.arange(tracks.shape[0]), foi_indexes, :-1
-                    ]  # removes temporal encoding
+                    # Remove Temporal encoding
+                    foi_dets = tracks[torch.arange(tracks.shape[0]), foi_indexes, :-1]
+
                     out_size = (
                         self.center_dim
                         + self.size_dim
@@ -159,13 +167,13 @@ class TrainingUtils:
                     total_non_zero += n_non_zero
                     for metric, sos in metrics.items():
                         val_metrics[metric] = val_metrics.get(metric, 0) + sos.sum()
-                    for metric, acc in scores.items():
-                        score_metrics[metric] = score_metrics.get(metric, 0) + acc
+                    for metric, score in scores.items():
+                        score_metrics[metric] = score_metrics.get(metric, 0) + score
 
         if epoch % self.eval_every == 0:
             for metric, sos in val_metrics.items():
-                val_metrics[metric] = (sos / total_non_zero) ** (1 / 2)
-            for metric, acc in score_metrics.items():
-                val_metrics[metric] = acc / len(val_loader.dataset)
+                val_metrics[metric] = sos / total_non_zero
+            for metric, score in score_metrics.items():
+                val_metrics[metric] = score / len(val_loader.dataset)
 
         return val_loss_cum, val_metrics

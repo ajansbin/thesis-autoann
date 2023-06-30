@@ -128,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tracking-result-path",
         type=str,
-        default="/home/s0001671/workspace/storage/results/nuscenes-centerpoint-valsplit-trackresults.json",
+        default="tracking-result-path",
     )
     parser.add_argument("--verbose", type=bool, default=True)
 

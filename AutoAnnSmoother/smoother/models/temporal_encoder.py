@@ -17,13 +17,11 @@ class PoolTempEnc(nn.Module):
         output: x               (B,W,F)
         """
 
-        x = x.masked_fill_(padding_mask.unsqueeze(-1), float("-inf"))
+        x = x.masked_fill_(padding_mask.bool().unsqueeze(-1), float("-inf"))
         x_pooled, _ = torch.max(x, dim=1, keepdim=True)  # (B, 1, F)
         x_expanded = x_pooled.expand((-1, x.size(1), -1))  # (B, W, F)
 
         return x_expanded
-        # center_out, size_out, rotation_out, score_out = self.heads(x_expanded)
-        # return center_out, size_out, rotation_out, score_out
 
 
 class LSTMTempEnc(nn.Module):
@@ -43,7 +41,6 @@ class LSTMTempEnc(nn.Module):
         output: x               (B,W,F)
         """
 
-        # ToDo: Take care of the padding somehow?
         x, _ = self.lstm(x)  # Shape: (B, W, lstm_hidden_size)
 
         return x

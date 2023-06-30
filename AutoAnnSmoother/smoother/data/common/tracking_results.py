@@ -24,9 +24,6 @@ class TrackingResultsBase:
             "Calling Abstract Class Method! Instead, must use child of TrackingResultsBase."
         )
 
-    # def get_sequence_from_id(self, id):
-    #    raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResultsBase.")
-
     def get_frames_in_sequence(self, scene_token):
         raise NotImplementedError(
             "Calling Abstract Class Method! Instead, must use child of TrackingResultsBase."
@@ -41,9 +38,6 @@ class TrackingResultsBase:
         raise NotImplementedError(
             "Calling Abstract Class Method! Instead, must use child of TrackingResultsBase."
         )
-
-    # def get_first_frame_in_sequence(self, seq):
-    #    raise NotImplementedError("Calling Abstract Class Method! Instead, must use child of TrackingResultsBase.")
 
     def get_number_of_sequences(self):
         raise NotImplementedError(

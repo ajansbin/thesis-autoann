@@ -32,6 +32,7 @@ class SmoothingTrainer:
     def __init__(
         self,
         tracking_results_path,
+        tracking_preprocessed_path,
         conf_path,
         data_path,
         pc_name,
@@ -40,6 +41,7 @@ class SmoothingTrainer:
     ):
         print("---Initializing SmoothingTrainer class---")
         self.tracking_results_path = tracking_results_path
+        self.tracking_preprocessed_path = tracking_preprocessed_path
         self.conf_path = conf_path
         self.data_path = data_path
         self.pc_name = pc_name
@@ -49,8 +51,6 @@ class SmoothingTrainer:
         self.conf = self._get_config(self.conf_path)
 
         # Update conf with pc path
-        # self.conf["data"]["pc_path"] = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed_world/full_train'
-        # self.conf["data"]["pc_path"] = "storage/smoothing/autoannsmoothing/preprocessed_world/mini_train"
         self.conf["data"]["pc_path"] = str(os.path.join("preprocessed", self.pc_name))
 
         self.data_type = self.conf["data"]["type"]  # nuscenes / zod
@@ -112,6 +112,7 @@ class SmoothingTrainer:
                 self.split,
                 self.data_path,
             )
+
         else:
             raise NotImplementedError(
                 f"Dataclass of type {self.data_type} is not implemented. Please use 'nuscenes' or 'zod'."
@@ -137,6 +138,7 @@ class SmoothingTrainer:
             remove_non_foi_tracks=True,
             remove_non_gt_tracks=self.remove_non_gt_tracks,
             seqs=train_seqs,
+            tracking_preprocessed_path=self.tracking_preprocessed_path,
         )
 
         self.val_data_model = WindowTrackingData(
@@ -150,6 +152,7 @@ class SmoothingTrainer:
             remove_non_foi_tracks=True,
             remove_non_gt_tracks=self.remove_non_gt_tracks,
             seqs=val_seqs,
+            tracking_preprocessed_path=self.tracking_preprocessed_path,
         )
 
     def _get_train_val_seq_split(self, seqs: list):
@@ -225,9 +228,6 @@ class SmoothingTrainer:
         temporal_encoder = self.conf["model"]["temporal_encoder"]
         dec_out_size = self.conf["model"]["dec_out_size"]
 
-        # decoder_name = self.conf["model"]["decoder"]["name"]
-        # dec_out_size = self.conf["model"]["decoder"]["dec_out_size"]
-
         if self.early_fuse:
             self.model = PCTrackEarlyFusionNet(
                 fuse_encoder,
@@ -240,6 +240,30 @@ class SmoothingTrainer:
             )
         elif self.use_pc and self.use_track:
             self.model = PCTrackNet(
+                track_encoder_name=track_encoder,
+                pc_encoder_name=pc_encoder,
+                temporal_encoder_name=temporal_encoder,
+                track_feat_dim=TRACK_FEAT_DIM,
+                pc_feat_dim=POINT_FEAT_DIM,
+                track_out=track_out_size,
+                pc_out=pc_out_size,
+                dec_out_size=dec_out_size,
+                window_size=self.window_size,
+            )
+        elif self.use_pc:
+            self.model = PCNet(
+                track_encoder_name=track_encoder,
+                pc_encoder_name=pc_encoder,
+                temporal_encoder_name=temporal_encoder,
+                track_feat_dim=TRACK_FEAT_DIM,
+                pc_feat_dim=POINT_FEAT_DIM,
+                track_out=track_out_size,
+                pc_out=pc_out_size,
+                dec_out_size=dec_out_size,
+                window_size=self.window_size,
+            )
+        else:
+            self.model = TrackNet(
                 track_encoder_name=track_encoder,
                 pc_encoder_name=pc_encoder,
                 temporal_encoder_name=temporal_encoder,

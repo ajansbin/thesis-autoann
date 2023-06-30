@@ -10,18 +10,17 @@ from smoother.models.temporal_encoder import (
 )
 from smoother.models.backbone_encoders import TNet, PCEncoder, FuseEncoder, TrackEncoder
 
+
 ### NETS ###
-
-
 class PCTrackEarlyFusionNet(nn.Module):
     def __init__(
         self,
         fuse_encoder_name: str,
         encoder_out_size: str,
         temporal_encoder_name: str,
-        dec_out_size=4,
-        track_feat_dim=8,
-        pc_feat_dim=3,
+        dec_out_size,
+        track_feat_dim,
+        pc_feat_dim,
         window_size=180,
     ):
         super(PCTrackEarlyFusionNet, self).__init__()
@@ -39,11 +38,6 @@ class PCTrackEarlyFusionNet(nn.Module):
         )
 
         self.heads = DecoderHeads(encoder_out_size, dec_out_size)
-
-        # self.tgt_enc = nn.Sequential(
-        #     nn.Linear(8, pc_out - 1),
-        #     nn.ReLU(),
-        # )
 
     def forward(self, tracks, pcs):
         """
@@ -73,14 +67,6 @@ class PCTrackEarlyFusionNet(nn.Module):
         tp_temp_enc = self.temporal_encoder(tp_enc, padding_mask)
 
         center_out, size_out, rotation_out, score_out = self.heads(tp_temp_enc)
-
-        # tp_dec = self.temporal_transformer(
-        #     tp_enc,
-        #     track_enc,
-        #     src_key_padding_mask=padding_mask,
-        #     tgt_key_padding_mask=padding_mask,
-        # )
-        # tp_dec = self.temporal_decoder(tp_enc)  # (B, W, 7)
 
         return center_out, size_out, rotation_out, score_out
 
@@ -129,13 +115,8 @@ class PCTrackNet(nn.Module):
         """
 
         # Mask out padded
-        # print("TRACKS")
-        # print(tracks)
-
         s = torch.sum(tracks, dim=-1)
         padding_mask = (s == 0).long()  # (B, W)
-        # print("MASK")
-        # print(padding_mask)
 
         # out shape: (B x W x pc_out)
         # Remove temporal encoding
@@ -147,18 +128,12 @@ class PCTrackNet(nn.Module):
 
         # out shape: (B x W x pc_out+track_out)
         tp_enc = torch.cat((pcs_enc, tracks_enc), dim=-1)
-        # print("TP ENC")
-        # print(tp_enc)
 
         # Add sinusodial temporal encoding
         tp_enc = self.pos_enc(tp_enc, padding_mask)
-        # print("TP ENC SINUS")
-        # print(tp_enc)
 
         # OBS: Not implemented for full-transformer yet
         tp_temp_enc = self.temporal_encoder(tp_enc, padding_mask)
-        # print("TP ENC Temp")
-        # print(tp_temp_enc)
 
         center_out, size_out, rotation_out, score_out = self.heads(tp_temp_enc)
 
@@ -168,81 +143,117 @@ class PCTrackNet(nn.Module):
 class PCNet(nn.Module):
     def __init__(
         self,
-        track_encoder: str,
-        pc_encoder: str,
-        decoder: str,
-        pc_feat_dim=3,
+        track_encoder_name: str,
+        pc_encoder_name: str,
+        temporal_encoder_name: str,
         track_feat_dim=8,
-        pc_out=256,
+        pc_feat_dim=3,
         track_out=64,
-        dec_out=16,
+        pc_out=256,
+        dec_out_size=16,
+        window_size=180,
     ):
         super(PCNet, self).__init__()
 
-        self.pc_encoder = get_encoder(
-            encoder_name=pc_encoder,
-            data_type="pc",
-            in_size=pc_feat_dim,
-            out_size=pc_out,
+        self.pc_encoder = PCEncoder(
+            input_dim=pc_feat_dim - 1, out_size=pc_out, dropout_rate=0.0
         )
 
-        dec_in_size = pc_out
-        self.temporal_decoder = get_decoder(
-            decoder_name=decoder, in_size=dec_in_size, out_size=dec_out
+        encoder_out_size = pc_out
+
+        self.pos_enc = SinusoidalPositionalEncoding(
+            d_model=encoder_out_size, max_len=window_size
         )
+
+        self.temporal_encoder = get_temporal_encoder(
+            encoder_name=temporal_encoder_name, in_size=encoder_out_size
+        )
+
+        self.heads = DecoderHeads(encoder_out_size, dec_out_size)
 
     def forward(self, tracks, pcs):
         """
-        Inputs:     pcs  (B x W x N x 8)
-
-        Outputs:    tensor  (B x 7)
+        Inputs: pcs     (B x W x N x 4)
+                tracks  (B x W x 8)
+        Outputs:
+                tensor  (B x 7)
         """
 
-        pcs_enc = self.pc_encoder(pcs)  # Shape: (B x W x pc_out)
+        # Mask out padded
+        s = torch.sum(tracks, dim=-1)
+        padding_mask = (s == 0).long()  # (B, W)
 
-        pcs_dec = self.temporal_decoder(pcs_enc)  # Shape (B x 7)
+        # out shape: (B x W x pc_out)
+        # Remove temporal encoding
+        pcs_enc = self.pc_encoder(pcs[:, :, :, :-1], padding_mask)
 
-        return pcs_dec
+        # Add sinusodial temporal encoding
+        pcs_enc = self.pos_enc(pcs_enc, padding_mask)
+
+        # OBS: Not implemented for full-transformer yet
+        pcs_temp_enc = self.temporal_encoder(pcs_enc, padding_mask)
+
+        center_out, size_out, rotation_out, score_out = self.heads(pcs_temp_enc)
+
+        return center_out, size_out, rotation_out, score_out
 
 
 class TrackNet(nn.Module):
     def __init__(
         self,
-        track_encoder: str,
-        pc_encoder: str,
-        decoder: str,
-        pc_feat_dim=3,
+        track_encoder_name: str,
+        pc_encoder_name: str,
+        temporal_encoder_name: str,
         track_feat_dim=8,
-        pc_out=256,
+        pc_feat_dim=3,
         track_out=64,
-        dec_out=16,
+        pc_out=256,
+        dec_out_size=16,
+        window_size=180,
     ):
         super(TrackNet, self).__init__()
 
-        self.track_encoder = get_encoder(
-            encoder_name=track_encoder,
-            data_type="track",
-            in_size=track_feat_dim,
-            out_size=track_out,
+        self.track_encoder = TrackEncoder(
+            input_dim=track_feat_dim - 1, out_size=track_out, dropout_rate=0.0
         )
 
-        dec_in_size = track_out
-        self.temporal_decoder = get_decoder(
-            decoder_name=decoder, in_size=dec_in_size, out_size=dec_out
+        encoder_out_size = track_out
+
+        self.pos_enc = SinusoidalPositionalEncoding(
+            d_model=encoder_out_size, max_len=window_size
         )
+
+        self.temporal_encoder = get_temporal_encoder(
+            encoder_name=temporal_encoder_name, in_size=encoder_out_size
+        )
+
+        self.heads = DecoderHeads(encoder_out_size, dec_out_size)
 
     def forward(self, tracks, pcs):
         """
-        Inputs:     tracks  (B x W x 8)
-
-        Outputs:    tensor  (B x 7)
+        Inputs: pcs     (B x W x N x 4)
+                tracks  (B x W x 8)
+        Outputs:
+                tensor  (B x 7)
         """
 
-        tracks_enc = self.track_encoder(tracks)  # Shape: (B x W x track_out)
+        # Mask out padded
+        s = torch.sum(tracks, dim=-1)
+        padding_mask = (s == 0).long()  # (B, W)
 
-        tracks_dec = self.temporal_decoder(tracks_enc)  # Shape (B x 7)
+        # out shape: (B x W x track_out)
+        # Remove temporal encoding
+        tracks_enc = self.track_encoder(tracks[:, :, :-1], padding_mask)
 
-        return tracks_dec
+        # Add sinusodial temporal encoding
+        tracks_enc = self.pos_enc(tracks_enc, padding_mask)
+
+        # OBS: Not implemented for full-transformer yet
+        tracks_temp_enc = self.temporal_encoder(tracks_enc, padding_mask)
+
+        center_out, size_out, rotation_out, score_out = self.heads(tracks_temp_enc)
+
+        return center_out, size_out, rotation_out, score_out
 
 
 ### DECODERS ###

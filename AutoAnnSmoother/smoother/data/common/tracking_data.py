@@ -1,20 +1,14 @@
 import tqdm
 from collections import defaultdict
 from smoother.data.common.dataclasses import TrackingBox, Tracklet
-from smoother.data.common.transformations import (
-    ToTensor,
-    CenterOffset,
-    YawOffset,
-    Normalize,
-    PointsShift,
-)
+from smoother.data.common.transformations import PointsShift
 import torch
 import numpy as np
 import os
 import copy
-from smoother.data.common.utils import convert_to_yaw
-from pyquaternion import Quaternion
+from smoother.data.common.utils import convert_to_yaw, bipartite_matching
 import random
+import pickle
 
 TRACK_FEAT_DIM = 8
 POINT_FEAT_DIM = 4
@@ -31,6 +25,7 @@ class TrackingData:
         remove_non_gt_tracks=True,
         seq_tokens=None,
         use_pc=True,
+        tracking_preprocessed_path=None,
     ):
         self.tracking_results = tracking_results
         self.use_pc = use_pc
@@ -39,6 +34,7 @@ class TrackingData:
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
         self.seqs = self.tracking_results.seq_tokens if not seq_tokens else seq_tokens
+        self.tracking_preprocessed_path = tracking_preprocessed_path
 
         data_conf = self.tracking_results.config["data"]
         self.assoc_metric = data_conf["association_metric"]
@@ -115,7 +111,11 @@ class TrackingData:
 
     def _load_track_points(self, track):
         if "pc_path" in self.tracking_results.config["data"]:
-            root_pc_path = self.tracking_results.config["data"]["pc_path"]
+            pc_root_folder = self.tracking_results.config["data"]["pc_path"]
+            pc_folder = (
+                self.tracking_results.version + "_" + self.tracking_results.split
+            )
+            root_pc_path = os.path.join(pc_root_folder, pc_folder)
         else:
             split = self.tracking_results.split
             root_pc_path = f"/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/1/full_{split}"
@@ -123,6 +123,7 @@ class TrackingData:
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
         pc = torch.from_numpy(np.load(pc_path)).float()
+
         if pc.shape[0] > self.max_track_length:
             pc = pc[: self.max_track_length, :]
         return pc
@@ -170,10 +171,17 @@ class TrackingData:
         return track_points
 
     def _get_data_samples(self):
-        tracking_data = self._format_tracking_data()
+        if self.tracking_preprocessed_path is None:
+            print("Formatting tracking data")
+            tracking_data = self._format_tracking_data()
+        else:
+            print("Reading preprocessed tracking data")
+            with open(self.tracking_preprocessed_path, "rb") as f:
+                tracking_data = pickle.load(f)
         for sequence, tracks in tracking_data.items():
-            for track_id, track in tracks.items():
-                yield track
+            if sequence in self.seqs:
+                for track_id, track in tracks.items():
+                    yield track
 
     def _format_tracking_data(self):
         seq_tracking_ids = {}
@@ -209,7 +217,6 @@ class TrackingData:
                     tracking_id = tracking_box.tracking_id
 
                     if tracking_id not in track_ids:
-                        # foi_index = tracking_box.frame_index if tracking_box.is_foi else None
                         track_ids[tracking_id] = Tracklet(
                             sequence_token,
                             tracking_id,
@@ -218,11 +225,6 @@ class TrackingData:
                             self.assoc_thres,
                         )
                     track_ids[tracking_id].add_box(tracking_box)
-                    # if tracking_id == "Vehicle_0_13":
-                    #    print(
-                    #        tracking_id,
-                    #        [box.center for box in track_ids[tracking_id].boxes],
-                    #    )
 
             # remove tracking_id which do not include FoI
             if self.remove_non_foi_tracks:
@@ -237,16 +239,37 @@ class TrackingData:
             gt_boxes = copy.deepcopy(
                 self.tracking_results.get_gt_boxes_from_frame(frame_token)
             )
-            for gt_box in gt_boxes:
-                gt_box["rotation"] = convert_to_yaw(gt_box["rotation"])
 
-            track_ids_filtered_has_gt = defaultdict(None)
-            for track_id, track in track_ids_filtered.items():
-                if track.foi_index:
-                    track.associate(gt_boxes)
+            if len(gt_boxes) > 0:
+                for gt_box in gt_boxes:
+                    gt_box["rotation"] = convert_to_yaw(gt_box["rotation"])
 
-                if not self.remove_non_gt_tracks or track.has_gt:
-                    track_ids_filtered_has_gt[track_id] = track
+                ground_truth_boxes = np.array(
+                    [gt["translation"] + gt["size"] + gt["rotation"] for gt in gt_boxes]
+                )
+                detected_boxes = []
+                for track_id, track in track_ids_filtered.items():
+                    foi_box = track.get_foi_box()
+                    detected_boxes.append(
+                        foi_box.center + foi_box.size + foi_box.rotation
+                    )
+
+                detected_boxes = np.array(detected_boxes)
+                pred_gts = bipartite_matching(
+                    ground_truth_boxes, detected_boxes, self.assoc_thres
+                )
+
+                track_ids_filtered_has_gt = defaultdict(None)
+                for pred_i, (track_id, track) in enumerate(track_ids_filtered.items()):
+                    gt_i, d = pred_gts[pred_i]
+                    if track.foi_index and gt_i != -1:
+                        gt_box = gt_boxes[gt_i]
+                        track.set_gt(gt_box, d)
+
+                    if not self.remove_non_gt_tracks or track.has_gt:
+                        track_ids_filtered_has_gt[track_id] = track
+            else:
+                track_ids_filtered_has_gt = track_ids_filtered
 
             seq_tracking_ids[sequence_token] = copy.deepcopy(track_ids_filtered_has_gt)
         return seq_tracking_ids
@@ -265,6 +288,7 @@ class WindowTrackingData:
         remove_non_foi_tracks=True,
         remove_non_gt_tracks=True,
         seqs=None,
+        tracking_preprocessed_path=None,
     ):
         self.tracking_results = tracking_results
         self.window_size = window_size
@@ -275,17 +299,17 @@ class WindowTrackingData:
         self.points_transformations = points_transformations
         self.remove_non_foi_tracks = remove_non_foi_tracks
         self.remove_non_gt_tracks = remove_non_gt_tracks
-        self.seqs = seqs
+        self.seqs = None
+        self.tracking_preprocessed_path = tracking_preprocessed_path
 
         print("Loading sequences...")
         self.tracking_data = TrackingData(
-            self.tracking_results,
+            tracking_results,
             self.transformations,
             self.points_transformations,
             self.remove_non_foi_tracks,
             self.remove_non_gt_tracks,
-            self.seqs,
-            self.use_pc,
+            seqs,
         )
 
         print(f"Finished loading {len(self.tracking_data) * self.times} data samples!")
@@ -446,13 +470,12 @@ class WindowTrackingData:
         )
 
         # Offset all points using center
-        if self.use_pc:
-            offset_point_data = copy.deepcopy(wind_point_data)
-            offset_point_data[first_index : last_index + 1, :, 0:3] = self.transform(
-                wind_point_data[first_index : last_index + 1, :, 0:3],
-                offset_center,
-                rotation_matrix,
-            )
+        offset_point_data = copy.deepcopy(wind_point_data)
+        offset_point_data[first_index : last_index + 1, :, 0:3] = self.transform(
+            wind_point_data[first_index : last_index + 1, :, 0:3],
+            offset_center,
+            rotation_matrix,
+        )
 
         # Offset center and yaw for gt_data
         offset_gt_data = copy.deepcopy(gt_data)
@@ -476,14 +499,11 @@ class WindowTrackingData:
         offset_track_data[:first_index, -1] = 0
         offset_track_data[last_index + 1 :, -1] = 0
 
-        if self.use_pc:
-            offset_point_data[first_index : last_index + 1, :, -1] = (
-                offset_point_data[first_index : last_index + 1, :, -1] - first_index
-            )
-            offset_point_data[:first_index, :, -1] = 0
-            offset_point_data[last_index + 1 :, :, -1] = 0
-        else:
-            offset_point_data = wind_point_data
+        offset_point_data[first_index : last_index + 1, :, -1] = (
+            offset_point_data[first_index : last_index + 1, :, -1] - first_index
+        )
+        offset_point_data[:first_index, :, -1] = 0
+        offset_point_data[last_index + 1 :, :, -1] = 0
 
         return offset_track_data, offset_point_data, offset_gt_data
 
@@ -498,12 +518,12 @@ class WindowTrackingData:
         rotation_matrix (3,3)
         """
 
-        rot_mat_transpose = rotation_matrix.T
-        inverse_translate = -rot_mat_transpose @ center.unsqueeze(-1)
-        trans = torch.cat((rot_mat_transpose, inverse_translate), dim=1)
+        rot_mat_transpose = rotation_matrix.T  # (3,3)
+        inverse_translate = -rot_mat_transpose @ center.unsqueeze(-1)  # (1,3)
+        trans = torch.cat((rot_mat_transpose, inverse_translate), dim=1)  # (3,4)
         trans = torch.cat(
             (trans, torch.tensor([[0, 0, 0, 1]], dtype=torch.float32)), dim=0
-        )
+        )  # (4,4)
 
         points_homogeneous = torch.cat(
             (

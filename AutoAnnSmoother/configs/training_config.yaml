@@ -1,7 +1,7 @@
 ### PCTrackNet ###
 model:
   early_fuse: # fuse points and tracks before encoding
-    early_fuse: false
+    early_fuse: true
     fuse_encoder: pointnet # one of [pointnet]
     encoder_out_size: 128
   pc:
@@ -12,26 +12,24 @@ model:
     use_track: true
     track_encoder: pointnet # one of [pointnet]
     track_out_size: 64
-  temporal_encoder: transformer # one of [pool, lstm, transformer, full-transformer]
+  temporal_encoder: transformer # one of [pool, lstm, transformer]
   dec_out_size: 8
-  decoder:
-    name: transformer # one of [pool, lstm, transformer]
-    dec_out_size: 8
 
 ### Dataclass ###
 data:
-  type: zod # one of [nuscenes, zod]
-  version: mini
+  type: zod # one of [zod]
+  version: full
   split: train
   annotations:
     world_coord: true
     motion_compensate: true
-  window_size: 25
-  times: 25
-  random_slides: true
-  association_metric: giou #[giou, l2]
+  window_size: 15
+  times: 1
+  random_slides: true    
+  association_metric: iou # one of [iou]
   association_thresholds:
-    giou: 0.0
+    iou: 0.2
+    giou: -0.5
     l2: 2
   remove_bottom_center: false # if increases the z dimension by half the height for the detections
   remove_non_gt_tracks: false
@@ -55,20 +53,18 @@ data:
         stdev: [1] 
     points:
       points_shift: false
-      shift_max_size: 1
+      shift_max_size: 0.1
       points_scale: false
-      scale_min: 0.9
-      scale_max: 1.1
 
 
 ### Trainingdata Specific ###
 train:
   learning_rate: 1.0E-4
-  weight_decay: 1.0E-5
-  train_size: 0.8
+  weight_decay: 0
+  train_size: 0.9
   batch_size: 150
   n_workers: 8
-  n_epochs: 30
+  n_epochs: 200
   eval_every: 1
   seed: 0
 
@@ -78,9 +74,9 @@ test:
     split: train
 
 loss:
-  type: "l1" # one of [l1, iou, giou]
+  type: "l1" # one of [l1]
   weight:
-    center: 1
-    size : 1
-    rotation: 1
-    score: 1
+    center: 1.0
+    size : 1.0
+    rotation: 1.0
+    score: 1.0

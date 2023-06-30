@@ -11,7 +11,14 @@ from zod.data_classes.geometry import Pose
 VALID_OBJECTS = ["Vehicle", "VulnerableVehicle", "Pedestrian"]
 
 
-def load_gt(zod, scene_tokens, motion_compensate=True, world_coord=True, verbose=False):
+def load_gt(
+    zod,
+    class_name,
+    scene_tokens,
+    motion_compensate=True,
+    world_coord=True,
+    verbose=False,
+):
     seq_gt = {}
 
     for seq_id in tqdm.tqdm(scene_tokens, position=0, leave=True):
@@ -20,8 +27,9 @@ def load_gt(zod, scene_tokens, motion_compensate=True, world_coord=True, verbose
         frame_anns = []
         for ann_obj in annotations:
             if (
-                ann_obj.should_ignore_object(require_3d=True)
-                or ann_obj.name not in VALID_OBJECTS
+                ann_obj.box3d is None
+                # ann_obj.should_ignore_object(require_3d=True)
+                or ann_obj.name != class_name
             ):
                 continue
 

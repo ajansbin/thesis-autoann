@@ -1,4 +1,3 @@
-from torch import nn
 from torch.nn import functional as F
 import torch
 import numpy as np
@@ -6,14 +5,17 @@ import math
 
 
 class BoxRefinementLoss:
-    def __init__(self, loss_config, normalize_conf):
+    def __init__(self, loss_config, normalize_conf, device):
         self.loss_type = loss_config["type"]
         self.loss_weights = loss_config["weight"]
+        self.device = device
 
         self.loss_fn = self._get_loss_fn(self.loss_type)
         self.std_center = normalize_conf["center"]["stdev"]
         self.std_size = normalize_conf["size"]["stdev"]
         self.std_rotation = normalize_conf["rotation"]["stdev"]
+
+        self.temperature = 1
 
     def _get_loss_fn(self, loss_type):
         if loss_type.lower() == "l1":
@@ -29,19 +31,23 @@ class BoxRefinementLoss:
         return loss_fn
 
     def l1_loss(self, center_preds, size_preds, rotation_preds, gts):
-        has_gt = gts[:, -2]
+        has_gt = gts[:, -2]  # [x,y,z,l,w,h,r,hasgt,wheregt]
 
         gt_centers = gts[:, :3]
-        center_loss = F.l1_loss(center_preds, gt_centers, reduction="none").sum(-1)
+        center_loss = torch.sum(
+            F.smooth_l1_loss(center_preds, gt_centers, reduction="none", beta=0), dim=-1
+        )
 
         gt_sizes = gts[:, 3:6]
-        size_loss = F.l1_loss(size_preds, gt_sizes, reduction="none").sum(-1)
+        size_loss = torch.sum(
+            F.smooth_l1_loss(size_preds, gt_sizes, reduction="none", beta=0), dim=-1
+        )
 
-        gt_rotations = gts[:, 6].unsqueeze(-1)
+        gt_rotations = gts[:, 6:7]
         yaw_err = self.get_yaw_err(rotation_preds, gt_rotations).squeeze(-1)
 
         # only compute center, size and rotation loss on boxes with gt
-        n_gt = has_gt.sum()
+        n_gt = max(1, has_gt.sum())
         center_loss = torch.mul(center_loss, has_gt).sum() / n_gt
         size_loss = torch.mul(size_loss, has_gt).sum() / n_gt
         rotation_loss = torch.mul(yaw_err, has_gt).sum() / n_gt
@@ -53,81 +59,95 @@ class BoxRefinementLoss:
     def giou_loss(self, center_pred, size_pred, rotation_pred, gts):
         raise NotImplementedError
 
-    def compute_score_loss(self, score_pred, gts):
-        gt_score = gts[:, -2]
-        loss = nn.BCELoss()
-        out = loss(score_pred.squeeze(-1), gt_score)
+    def compute_score_loss(
+        self, center_preds, size_preds, rotation_preds, score_pred, gts
+    ):
+        n_preds = center_preds.shape[0]
+
+        has_gt = gts[:, -2]  # [x,y,z,l,w,h,r,hasgt,wheregt]
+
+        l2_err = F.mse_loss(center_preds, gts[:, :3], reduction="none").sum(-1)
+        gt_scores = torch.exp(-self.temperature * l2_err)
+
+        gt_scores = torch.mul(gt_scores, has_gt)
+
+        out = F.l1_loss(score_pred.squeeze(-1), gt_scores, reduction="mean")
+
         return out
 
     def loss(self, center_preds, size_preds, rotation_preds, score_pred, gts):
         center_loss, size_loss, rotation_loss = self.loss_fn(
             center_preds, size_preds, rotation_preds, gts
         )
-        score_loss = self.compute_score_loss(score_pred, gts)
+        score_loss = self.compute_score_loss(
+            center_preds, size_preds, rotation_preds, score_pred, gts
+        )
         center_loss *= self.loss_weights["center"]
         size_loss *= self.loss_weights["size"]
         rotation_loss *= self.loss_weights["rotation"]
         score_loss *= self.loss_weights["score"]
+
         return center_loss + size_loss + rotation_loss + score_loss
 
     def evaluate_model(self, dets, refined_dets, gt_anns, device):
         # Only compute MSE for detection with ground-truth associations
         non_zero_gt_indices = torch.nonzero(gt_anns[:, -2], as_tuple=True)[0]
-        n_non_zero = len(non_zero_gt_indices)
+        n_non_zero = max(1, len(non_zero_gt_indices))
 
         ### CENTER MSE
-        std_center = torch.tensor(self.std_center, dtype=torch.float32).to(device)
-        dets_centers = dets[non_zero_gt_indices, :3].mul(std_center)
-        ref_centers = refined_dets[non_zero_gt_indices, :3].mul(std_center)
-        gt_centers = gt_anns[non_zero_gt_indices, :3].mul(std_center)
-        sos_det_center = F.mse_loss(dets_centers, gt_centers, reduction="none")
-        sos_ref_center = F.mse_loss(ref_centers, gt_centers, reduction="none")
+        dets_centers = dets[non_zero_gt_indices, :3]
+        ref_centers = refined_dets[non_zero_gt_indices, :3]
+        gt_centers = gt_anns[non_zero_gt_indices, :3]
 
-        sos_det_x = sos_det_center[:, 0]
-        sos_det_y = sos_det_center[:, 1]
-        sos_det_z = sos_det_center[:, 2]
-        sos_ref_x = sos_ref_center[:, 0]
-        sos_ref_y = sos_ref_center[:, 1]
-        sos_ref_z = sos_ref_center[:, 2]
+        det_center_err = F.l1_loss(dets_centers, gt_centers, reduction="none")
+        ref_center_err = F.l1_loss(ref_centers, gt_centers, reduction="none")
+
+        det_x_err = det_center_err[:, 0]
+        det_y_err = det_center_err[:, 1]
+        det_z_err = det_center_err[:, 2]
+        ref_x_err = ref_center_err[:, 0]
+        ref_y_err = ref_center_err[:, 1]
+        ref_z_err = ref_center_err[:, 2]
 
         ### SIZE MSE
-        std_size = torch.tensor(self.std_size, dtype=torch.float32).to(device)
-        dets_sizes = dets[non_zero_gt_indices, 3:6].mul(std_size)
-        ref_sizes = refined_dets[non_zero_gt_indices, 3:6].mul(std_size)
-        gt_sizes = gt_anns[non_zero_gt_indices, 3:6].mul(std_size)
-        sos_det_size = F.mse_loss(dets_sizes, gt_sizes, reduction="none")
-        sos_ref_size = F.mse_loss(ref_sizes, gt_sizes, reduction="none")
+        dets_sizes = dets[non_zero_gt_indices, 3:6]
+        ref_sizes = refined_dets[non_zero_gt_indices, 3:6]
+        gt_sizes = gt_anns[non_zero_gt_indices, 3:6]
+        det_size_err = F.l1_loss(dets_sizes, gt_sizes, reduction="none")
+        ref_size_err = F.l1_loss(ref_sizes, gt_sizes, reduction="none")
 
         ### ROTATION MSE
-        std_rotation = torch.tensor(self.std_rotation, dtype=torch.float32).to(device)
+        dets_rotations = dets[non_zero_gt_indices, 6:7]
+        ref_rotations = refined_dets[non_zero_gt_indices, 6:7]
+        gt_rotations = gt_anns[non_zero_gt_indices, 6:7]
 
-        dets_rotations = dets[non_zero_gt_indices, 6].mul(std_rotation)
-        ref_rotations = refined_dets[non_zero_gt_indices, 6].mul(std_rotation)
-        gt_rotations = gt_anns[non_zero_gt_indices, 6].mul(std_rotation)
-        sos_det_rotation = self.get_yaw_err(dets_rotations, gt_rotations).pow(2)
-        sos_ref_rotation = self.get_yaw_err(ref_rotations, gt_rotations).pow(2)
+        det_rot_err = self.get_yaw_err(dets_rotations, gt_rotations).squeeze(-1)
+        ref_rot_err = self.get_yaw_err(ref_rotations, gt_rotations).squeeze(-1)
 
         ### SCORE
-        gt_score = gt_anns[:, -2]
-        refined_dets = torch.where(refined_dets[:, -1] < 0.5, 0.0, 1.0)
-        acc_ref = torch.sum(refined_dets == gt_score).float()
+        l2_err = F.mse_loss(refined_dets[:, :3], gt_anns[:, :3], reduction="none").sum(
+            -1
+        )
+        gt_scores = torch.exp(-self.temperature * l2_err)
+
+        score_err = F.l1_loss(refined_dets[:, -1], gt_scores, reduction="sum")
 
         return (
             {
-                "rmse_dets_center": sos_det_center.sum(-1),
-                "rmse_refinement_center": sos_ref_center.sum(-1),
-                "rmse_dets_size": sos_det_size.sum(-1),
-                "rmse_refinement_size": sos_ref_size.sum(-1),
-                "rmse_dets_rotation": sos_det_rotation,
-                "rmse_refinement_rotation": sos_ref_rotation,
-                "rmse_det_x": sos_det_x,
-                "rmse_det_y": sos_det_y,
-                "rmse_det_z": sos_det_z,
-                "rmse_ref_x": sos_ref_x,
-                "rmse_ref_y": sos_ref_y,
-                "rmse_ref_z": sos_ref_z,
+                "mae_dets_center": det_center_err.sum(-1),
+                "mae_refinement_center": ref_center_err.sum(-1),
+                "mae_dets_size": det_size_err.sum(-1),
+                "mae_refinement_size": ref_size_err.sum(-1),
+                "mae_dets_rotation": det_rot_err,
+                "mae_refinement_rotation": ref_rot_err,
+                "mae_det_x": det_x_err,
+                "mae_det_y": det_y_err,
+                "mae_det_z": det_z_err,
+                "mae_ref_x": ref_x_err,
+                "mae_ref_y": ref_y_err,
+                "mae_ref_z": ref_z_err,
             },
-            {"acc_ref": acc_ref},
+            {"mae_score": score_err},
             n_non_zero,
         )
 

@@ -22,7 +22,6 @@ def preprocess(data_path, version, split, save_dir, tracking_result_path):
     seq_tokens = zod.get_split(split)
 
     conf_path = "/AutoAnnSmoother/configs/training_config.yaml"
-    conf_path = "/home/s0001671/workspace/thesis-autoann/AutoAnnSmoother/configs/training_config.yaml"
     conf = load_config(conf_path)
     tracking_results = ZodTrackingResults(
         tracking_result_path, conf, version, split, data_path=data_path
@@ -85,7 +84,6 @@ def process_sequence(sequence_token, tracking_results, N_max, save_dir):
         )
 
         np.save(save_path, combined_point_cloud)
-        print("Saved to", save_path)
 
 
 def preprocess_and_save_point_clouds(tracking_results, save_dir):
@@ -130,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tracking-result-path",
         type=str,
-        default="/home/s0001671/workspace/storage/results/nuscenes-centerpoint-valsplit-trackresults.json",
+        default="/tracking-result-path",
     )
     parser.add_argument("--verbose", type=bool, default=True)
 

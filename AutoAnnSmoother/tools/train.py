@@ -8,9 +8,18 @@ def main(
     pc_name: str,
     save_dir: str,
     result_path: str,
+    tracking_preprocessed_path: str,
     name: str,
 ):
-    trainer = SmoothingTrainer(result_path, config, data_path, pc_name, save_dir, name)
+    trainer = SmoothingTrainer(
+        result_path,
+        tracking_preprocessed_path,
+        config,
+        data_path,
+        pc_name,
+        save_dir,
+        name,
+    )
     trainer.load_data()
     trainer.load_model()
     trainer.train()
@@ -24,7 +33,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--result-path",
         type=str,
-        default="/home/s0001671/workspace/storage/results/nuscenes-centerpoint-valsplit-trackresults.json",
+        default="/trackresults.json",
+    )
+    parser.add_argument(
+        "--tracking-preprocessed-path",
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--config",
@@ -55,5 +69,6 @@ if __name__ == "__main__":
         args.pc_name,
         args.save_dir,
         args.result_path,
+        args.tracking_preprocessed_path,
         args.name,
     )

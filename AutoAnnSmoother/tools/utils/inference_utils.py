@@ -3,11 +3,10 @@ import torch
 import os
 import numpy as np
 from smoother.data.common.dataclasses import Tracklet
-from smoother.data.common.transformations import ToTensor
 
-class SequenceInferer():
 
-    def __init__(self, seq_data:SequenceData, foi_index:int):
+class SequenceInferer:
+    def __init__(self, seq_data: SequenceData, foi_index: int):
         self.seq_data = seq_data
         self.foi_index = foi_index
 
@@ -24,7 +23,7 @@ class SequenceInferer():
 
     def __len__(self):
         return len(self.data_samples)
-    
+
     def __getitem__(self, index):
         track = self.data_samples[index]
 
@@ -40,7 +39,10 @@ class SequenceInferer():
         track_start_index = track.starting_frame_index
         track_end_index = track_start_index + len(track)
 
-        track_data = [self._get_track_data_entry(i, track, track_start_index, track_end_index) for i in range(self.max_track_length)]
+        track_data = [
+            self._get_track_data_entry(i, track, track_start_index, track_end_index)
+            for i in range(self.max_track_length)
+        ]
 
         return track_data
 
@@ -64,10 +66,15 @@ class SequenceInferer():
             track_end_index = 180
 
         # Initialize a tensor with the required dimensions
-        full_track_points = torch.zeros((self.max_track_length, track_points.shape[1], track_points.shape[2] + 1), dtype=torch.float32)
+        full_track_points = torch.zeros(
+            (self.max_track_length, track_points.shape[1], track_points.shape[2] + 1),
+            dtype=torch.float32,
+        )
 
         # Fill in the track_points
-        full_track_points[track_start_index:track_end_index, :, :-1] = track_points[0:track_end_index-track_start_index]
+        full_track_points[track_start_index:track_end_index, :, :-1] = track_points[
+            0 : track_end_index - track_start_index
+        ]
 
         # Fill in the temporal encoding for all points
         temporal_encoding = torch.arange(180) - 89
@@ -79,24 +86,19 @@ class SequenceInferer():
 
         return full_track_points.float()
 
-    
     def _get_point_clouds(self, track):
-        if "pc_path" in self.data_conf:
-            root_pc_path = self.data_conf["pc_path"]
-        else:
-            #root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_full_train'
-            root_pc_path = '/staging/agp/masterthesis/2023autoann/storage/smoothing/autoannsmoothing/preprocessed/preprocessed_mini_train'
+        root_pc_path = self.data_conf["pc_path"]
 
         pc_name = f"point_clouds_{track.sequence_id}_{track.tracking_id}.npy"
         pc_path = os.path.join(root_pc_path, pc_name)
         pc = torch.from_numpy(np.load(pc_path)).float()
 
         if pc.shape[0] == 181:
-            pc = pc[:180,:]
+            pc = pc[:180, :]
         return pc
 
     def _get_offset_pc(self, track: Tracklet, track_points: np.ndarray):
-        foi_box = track.boxes[self.foi_index-track.starting_frame_index]
+        foi_box = track.boxes[self.foi_index - track.starting_frame_index]
         foi_center = np.array(foi_box.center)
         offset_points = track_points - foi_center
         return offset_points
@@ -110,20 +112,25 @@ class SequenceInferer():
                 foi_data = track_data[self.foi_index]
                 transformation.set_offset(foi_data)
                 track.set_center_offset(transformation.offset)
-                transformation.set_start_and_end_index(track_start_index, track_end_index)
+                transformation.set_start_and_end_index(
+                    track_start_index, track_end_index
+                )
             if i == self.yaw_offset_index:
                 foi_data = track_data[self.foi_index]
                 transformation.set_offset(foi_data)
                 track.set_yaw_offset(transformation.offset)
-                transformation.set_start_and_end_index(track_start_index, track_end_index)
+                transformation.set_start_and_end_index(
+                    track_start_index, track_end_index
+                )
             elif i == self.normalize_index:
-                transformation.set_start_and_end_index(track_start_index, track_end_index)
+                transformation.set_start_and_end_index(
+                    track_start_index, track_end_index
+                )
 
             track_data = transformation.transform(track_data)
 
-
         return track_data
-    
+
     def _get_data_samples(self):
         for track in self.seq_data:
             track_start_index = track.starting_frame_index
@@ -138,52 +145,66 @@ class SequenceInferer():
         return self.data_samples[track_index]
 
 
-class WindowInferer():
-
-    def __init__(self, seq_data:SequenceData, foi_index:int, window_start, window_end, sequence_inferer=None):
+class WindowInferer:
+    def __init__(
+        self,
+        seq_data: SequenceData,
+        foi_index: int,
+        window_start,
+        window_end,
+        sequence_inferer=None,
+    ):
         self.seq_data = seq_data
         self.foi_index = foi_index
         self.window_start = window_start
         self.window_end = window_end
 
-        self.sequence_inferer = SequenceInferer(self.seq_data, self.foi_index) if not sequence_inferer else sequence_inferer
+        self.sequence_inferer = (
+            SequenceInferer(self.seq_data, self.foi_index)
+            if not sequence_inferer
+            else sequence_inferer
+        )
 
     def __len__(self):
         return len(self.sequence_inferer)
 
     def __getitem__(self, index):
         track_data = self.sequence_inferer[index]
-        start_index = self.foi_index + self.window_start # 
-        end_index = self.foi_index + self.window_end + 1# 182
+        start_index = self.foi_index + self.window_start  #
+        end_index = self.foi_index + self.window_end + 1  # 182
 
         device = track_data.device
 
         if start_index < 0:
             zero_pad_length = abs(start_index)
-            zero_pad = torch.zeros((zero_pad_length,track_data.shape[-1])).to(device)
+            zero_pad = torch.zeros((zero_pad_length, track_data.shape[-1])).to(device)
             track_data = torch.cat((zero_pad, track_data), dim=0)
-            end_index += zero_pad_length #4
-            start_index = 0 # 0
+            end_index += zero_pad_length  # 4
+            start_index = 0  # 0
         if end_index > self.sequence_inferer.max_track_length:
-            pad_length = end_index-self.sequence_inferer.max_track_length + 1
-            zero_pad = torch.zeros((abs(pad_length),track_data.shape[-1])).to(device)
+            pad_length = end_index - self.sequence_inferer.max_track_length + 1
+            zero_pad = torch.zeros((abs(pad_length), track_data.shape[-1])).to(device)
             track_data = torch.cat((track_data, zero_pad), dim=0)
             end_index = -1
 
         wind_track_data = track_data[start_index:end_index]
 
-        offset_tensor = torch.arange(self.window_start, self.window_end + 1).float().view(-1,1).to(device)
+        offset_tensor = (
+            torch.arange(self.window_start, self.window_end + 1)
+            .float()
+            .view(-1, 1)
+            .to(device)
+        )
         wind_track_data[:, -1] = offset_tensor.squeeze()
 
         return wind_track_data
-    
+
     def get(self, track_index):
         return self.sequence_inferer.get(track_index)
-    
 
-class SlidingWindowInferer():
 
-    def __init__(self, seq_data:SequenceData, foi_index:int, window_size:int):
+class SlidingWindowInferer:
+    def __init__(self, seq_data: SequenceData, foi_index: int, window_size: int):
         self.seq_data = seq_data
         self.foi_index = foi_index
         self.window_size = window_size
@@ -194,27 +215,23 @@ class SlidingWindowInferer():
 
     def __len__(self):
         return len(self.data_samples)
-    
+
     def __getitem__(self, index):
         track_data = self.data_samples[index]
 
         return track_data
 
     def _get_data_samples(self):
-
         for i in range(self.window_size):
             start_ind = i - self.window_size + 1
             end_ind = start_ind + self.window_size - 1
 
-            wind_inf = WindowInferer(self.seq_data, self.foi_index, start_ind, end_ind, self.sequence_inferer)
-            for track in wind_inf:                
+            wind_inf = WindowInferer(
+                self.seq_data, self.foi_index, start_ind, end_ind, self.sequence_inferer
+            )
+            for track in wind_inf:
                 yield track
 
-    def get(self, sliding_track_index): 
-        track_index = sliding_track_index % len(self.sequence_inferer)  
+    def get(self, sliding_track_index):
+        track_index = sliding_track_index % len(self.sequence_inferer)
         return self.sequence_inferer.get(track_index)
-
-
-        
-
-    

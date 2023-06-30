@@ -6,11 +6,9 @@ from typing import Any, Dict, Optional
 from smoother.data.common.utils import (
     calculate_giou3d_matrix,
     l2,
-    convert_to_sine_cosine,
-    convert_to_quaternion,
     convert_yaw_to_quat,
+    calculate_iou3d_matrix,
 )
-from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation as R
 
 
@@ -24,6 +22,7 @@ class TrackingBox:
     frame_index: int
     frame_token: str
     tracking_name: str
+    tracking_score: float
 
     center_offset: Optional[list]
     yaw_offset: Optional[list]
@@ -39,6 +38,7 @@ class TrackingBox:
             frame_index=box_dict["frame_index"],
             frame_token=box_dict["sample_token"],
             tracking_name=box_dict["tracking_name"],
+            tracking_score=box_dict["tracking_score"],
             center_offset=None,
             yaw_offset=None,
         )
@@ -53,6 +53,7 @@ class TrackingBox:
             "frame_token": self.frame_token,
             "frame_index": self.frame_index,
             "tracking_name": self.tracking_name,
+            "tracking_score": self.tracking_score,
             "center_offset": self.center_offset,
             "yaw_offset": self.yaw_offset,
         }
@@ -159,8 +160,13 @@ class Tracklet:
     def get_foi_box(self) -> TrackingBox:
         assert self.foi_index is not None, "Error:box Track has no foi_index!"
         foi_box = self.boxes[self.foi_index - self.starting_frame_index]
-        # assert foi_box.is_foi
         return copy.deepcopy(foi_box)
+
+    def set_gt(self, gt_box, gt_dist):
+        assert not self.has_gt
+        self.has_gt = True
+        self.gt_box = gt_box
+        self.gt_dist = gt_dist
 
     def associate(self, gt_boxes):
         foi_box = self.get_foi_box()
@@ -178,6 +184,11 @@ class Tracklet:
             gt_idx = torch.argmax(dists)
             gt_dist = torch.max(dists)
             valid_match = dists[gt_idx] >= self.assoc_thres
+        elif self.assoc_metric == "iou":
+            dists = torch.from_numpy(calculate_iou3d_matrix(gt_boxes, foi_box))
+            gt_idx = torch.argmax(dists)
+            gt_dist = torch.max(dists)
+            valid_match = dists[gt_idx] > self.assoc_thres
 
         closest_gt = copy.deepcopy(gt_boxes[gt_idx])
         if valid_match and closest_gt["detection_name"] == foi_box.tracking_name:
